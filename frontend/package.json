@@ -1,0 +1,25 @@
+{
+  "name": "epayslip-v3-frontend",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config ./vite.config.js",
+    "build": "vite build --config ./vite.config.js",
+    "preview": "vite preview --config ./vite.config.js",
+    "verify:vue": "node ./scripts/verifyVuePlugin.js"
+  },
+  "dependencies": {
+    "@primeuix/themes": "^3.0.0",
+    "axios": "^1.20.0",
+    "pinia": "^4.0.3",
+    "primeicons": "^8.0.0",
+    "primevue": "^4.5.5",
+    "vue": "^3.5.42",
+    "vue-router": "^5.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "vite": "^8.2.2"
+  }
+}

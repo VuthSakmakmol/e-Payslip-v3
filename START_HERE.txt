@@ -1,0 +1,67 @@
+e-PaySlip-V3 - START HERE
+==========================
+
+1) BACKEND
+----------
+Open PowerShell:
+
+cd D:\TraxFullTime\e-PaySlip-V3\backend
+copy .env.example .env
+notepad .env
+
+Set at minimum:
+- MONGODB_URI
+- JWT_SECRET
+- ROOT_ADMIN_EMAIL
+- ROOT_ADMIN_PASSWORD
+
+Then run:
+
+npm install
+npm run verify:layout
+npm run seed
+npm run dev
+
+Expected:
+[mongo] connected
+[api] running at http://localhost:4000
+
+
+2) FRONTEND
+-----------
+Open another PowerShell:
+
+cd D:\TraxFullTime\e-PaySlip-V3\frontend
+copy .env.example .env
+npm install
+npm run dev
+
+Open:
+http://localhost:5173
+
+
+3) FIRST CONFIGURATION
+----------------------
+- Login with ROOT_ADMIN_EMAIL / ROOT_ADMIN_PASSWORD from backend .env
+- Create Employees
+- LOCAL and FOREIGNER are employee categories
+- Configure company email / Telegram delivery
+- Seed already creates Week 1 and Week 2 as configurable pay-period records
+- Open Payslip Designer and adjust the default design
+- Import the fixed 87-column payroll XLSX
+
+LOCAL:
+- choose pay period
+- payroll rows are stored
+- preview
+- release
+
+FOREIGNER:
+- payroll rows stay in RAM only
+- preview
+- approve
+- release
+- PDF sent by selected contact channel
+- temporary payroll is destroyed after release
+
+Read README.md for full details.
