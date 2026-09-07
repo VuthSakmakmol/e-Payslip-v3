@@ -36,25 +36,20 @@ function systemValue(context, key) {
 
 function rawFieldValue(values, element, context) {
   if (PAYSLIP_SYSTEM_FIELD_BY_KEY.has(element.fieldKey)) {
-    return { text: systemValue(context, element.fieldKey), field: PAYSLIP_SYSTEM_FIELD_BY_KEY.get(element.fieldKey) }
+    return {
+      text: systemValue(context, element.fieldKey),
+      field: PAYSLIP_SYSTEM_FIELD_BY_KEY.get(element.fieldKey)
+    }
   }
 
   const value = valueObject(values, element.fieldKey)
-  if (!value) return { text: '', field: PAYROLL_FIELD_BY_KEY.get(element.fieldKey) }
   const field = PAYROLL_FIELD_BY_KEY.get(element.fieldKey)
+  if (!value) return { text: '', field }
 
-  let text = value.raw ?? ''
-  const decimalRaw = value.decimal?.toString?.() ?? value.decimal
-  if ((field?.type === 'DECIMAL' || field?.type === 'INTEGER') && decimalRaw !== null && decimalRaw !== undefined && decimalRaw !== '') {
-    const number = Number(decimalRaw)
-    if (Number.isFinite(number)) {
-      text = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: field.type === 'INTEGER' ? 0 : (element.decimalPlaces ?? 2),
-        maximumFractionDigits: field.type === 'INTEGER' ? 0 : (element.decimalPlaces ?? 2)
-      }).format(number)
-    }
+  return {
+    text: String(value.raw ?? value.decimal?.toString?.() ?? value.decimal ?? ''),
+    field
   }
-  return { text, field }
 }
 
 function formatField(values, element, context) {
@@ -62,12 +57,10 @@ function formatField(values, element, context) {
   const showLabel = element.showLabel === true
   const showValue = element.showValue !== false
   const label = String(element.labelText || field?.label || element.fieldKey || '').trim()
-  const separator = element.labelSeparator ?? ': '
-  const valueText = `${element.prefix || ''}${text}${element.suffix || ''}`
 
-  if (showLabel && showValue) return `${label}${separator}${valueText}`
+  if (showLabel && showValue) return `${label}: ${text}`
   if (showLabel) return label
-  if (showValue) return valueText
+  if (showValue) return text
   return ''
 }
 
@@ -98,6 +91,11 @@ function pdfOptions(design, password) {
   return options
 }
 
+function validHex(value, fallback) {
+  const text = String(value || '').trim()
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : fallback
+}
+
 export async function renderPayslipPdf({ design, payrollValues, password = '', context = {} }) {
   if (!design) throw new AppError('No payslip design is available', 400)
 
@@ -119,26 +117,47 @@ export async function renderPayslipPdf({ design, payrollValues, password = '', c
         const width = Math.max(Number(element.widthMm || 0) * MM_TO_PT, 0)
         const height = Math.max(Number(element.heightMm || 0) * MM_TO_PT, 0)
         const fontSize = Number(element.fontSize || 10)
+        const borderColor = validHex(element.borderColor, '#111827')
+        const textColor = validHex(element.textColor, '#111827')
+        const backgroundColor = validHex(element.backgroundColor, '')
 
         if (element.type === 'LINE') {
           doc
             .save()
             .lineWidth(Math.max(Number(element.borderWidth || 1), 0.5))
+            .strokeColor(borderColor)
             .moveTo(x, y)
             .lineTo(x + width, y)
-            .stroke('#000000')
+            .stroke()
             .restore()
           continue
         }
 
         if (element.type === 'RECTANGLE') {
+          doc.save()
+          if (backgroundColor) doc.rect(x, y, width, height).fill(backgroundColor)
+          if (Number(element.borderWidth || 0) > 0) {
+            doc
+              .lineWidth(Number(element.borderWidth))
+              .strokeColor(borderColor)
+              .rect(x, y, width, height)
+              .stroke()
+          }
+          doc.restore()
+          continue
+        }
+
+        if (backgroundColor) {
+          doc.save().rect(x, y, width, height).fill(backgroundColor).restore()
+        }
+        if (Number(element.borderWidth || 0) > 0) {
           doc
             .save()
-            .lineWidth(Math.max(Number(element.borderWidth || 1), 0.5))
+            .lineWidth(Number(element.borderWidth))
+            .strokeColor(borderColor)
             .rect(x, y, width, height)
-            .stroke('#000000')
+            .stroke()
             .restore()
-          continue
         }
 
         const text = String(
@@ -156,7 +175,7 @@ export async function renderPayslipPdf({ design, payrollValues, password = '', c
         doc
           .font(resolvePayslipFont(element.fontFamily || 'Times New Roman', element.fontWeight || 'normal'))
           .fontSize(fontSize)
-          .fillColor('#000000')
+          .fillColor(textColor)
           .text(text, textX, textY, {
             width: textWidth || undefined,
             height: textHeight || undefined,

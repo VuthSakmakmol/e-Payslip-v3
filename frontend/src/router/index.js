@@ -3,7 +3,6 @@ import AppLayout from '../layouts/AppLayout.vue'
 import LoginView from '../views/LoginView.vue'
 import FirstPasswordView from '../views/FirstPasswordView.vue'
 import TelegramVerifyView from '../views/TelegramVerifyView.vue'
-import TelegramCompleteView from '../views/TelegramCompleteView.vue'
 import EmployeePortalView from '../views/EmployeePortalView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EmployeesView from '../views/EmployeesView.vue'
@@ -13,13 +12,13 @@ import PayrollBatchesView from '../views/PayrollBatchesView.vue'
 import PayrollBatchDetailView from '../views/PayrollBatchDetailView.vue'
 import ForeignerPreviewView from '../views/ForeignerPreviewView.vue'
 import PayslipDesignerView from '../views/PayslipDesignerView.vue'
+import PayslipDesignsView from '../views/PayslipDesignsView.vue'
 import DeliveryHistoryView from '../views/DeliveryHistoryView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { public: true, guestOnly: true } },
   { path: '/first-login/password', name: 'first-password', component: FirstPasswordView, meta: { onboarding: true } },
   { path: '/first-login/telegram', name: 'telegram-verify', component: TelegramVerifyView, meta: { onboarding: true } },
-  { path: '/telegram/complete', name: 'telegram-complete', component: TelegramCompleteView, meta: { public: true } },
   { path: '/employee', name: 'employee-portal', component: EmployeePortalView, meta: { employeeOnly: true } },
   {
     path: '/',
@@ -33,7 +32,10 @@ const routes = [
       { path: 'payroll/batches', name: 'payroll-batches', component: PayrollBatchesView },
       { path: 'payroll/batches/:id', name: 'payroll-batch-detail', component: PayrollBatchDetailView },
       { path: 'payroll/foreigner/:id', name: 'foreigner-preview', component: ForeignerPreviewView },
-      { path: 'payslip-designer', name: 'payslip-designer', component: PayslipDesignerView },
+      { path: 'payslip-designs', name: 'payslip-designs', component: PayslipDesignsView },
+      { path: 'payslip-designs/new', name: 'payslip-design-new', component: PayslipDesignerView },
+      { path: 'payslip-designs/:id', name: 'payslip-design-edit', component: PayslipDesignerView },
+      { path: 'payslip-designer', redirect: '/payslip-designs' },
       { path: 'deliveries', name: 'deliveries', component: DeliveryHistoryView }
     ]
   },

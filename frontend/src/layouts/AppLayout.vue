@@ -66,7 +66,7 @@ const menu = [
   { label: 'Employees', icon: 'pi pi-users', to: '/employees' },
   { label: 'Import Payroll', icon: 'pi pi-file-import', to: '/payroll/import' },
   { label: 'Payroll Batches', icon: 'pi pi-wallet', to: '/payroll/batches' },
-  { label: 'Payslip Designer', icon: 'pi pi-palette', to: '/payslip-designer' },
+  { label: 'Payslip Designs', icon: 'pi pi-palette', to: '/payslip-designs' },
   { label: 'Delivery History', icon: 'pi pi-send', to: '/deliveries' },
   { label: 'Pay Periods', icon: 'pi pi-calendar', to: '/pay-periods' }
 ]
@@ -76,6 +76,7 @@ const routeTitle = computed(() => {
   if (exact) return exact.label
   if (route.path.startsWith('/payroll/batches/')) return 'Payroll Batch'
   if (route.path.startsWith('/payroll/foreigner/')) return 'Foreigner Preview'
+  if (route.path.startsWith('/payslip-designs/')) return 'Payslip Designer'
   return 'e-PaySlip'
 })
 

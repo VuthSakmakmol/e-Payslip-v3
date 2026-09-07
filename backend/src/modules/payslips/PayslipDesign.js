@@ -12,13 +12,9 @@ const elementSchema = new mongoose.Schema({
   fieldKey: { type: String, default: '' },
   text: { type: String, default: '' },
 
-  // FIELD rendering mode. Existing designs default to value-only.
   showLabel: { type: Boolean, default: false },
   showValue: { type: Boolean, default: true },
   labelText: { type: String, default: '' },
-  labelSeparator: { type: String, default: ': ' },
-  prefix: { type: String, default: '' },
-  suffix: { type: String, default: '' },
 
   xMm: { type: Number, required: true },
   yMm: { type: Number, required: true },
@@ -31,8 +27,11 @@ const elementSchema = new mongoose.Schema({
   align: { type: String, enum: ['left', 'center', 'right'], default: 'left' },
   paddingPx: { type: Number, min: 0, max: 30, default: 3 },
 
-  borderWidth: { type: Number, default: 0 },
-  decimalPlaces: { type: Number, min: 0, max: 6, default: 2 },
+  textColor: { type: String, default: '#111827' },
+  backgroundColor: { type: String, default: 'transparent' },
+  borderColor: { type: String, default: '#111827' },
+  borderWidth: { type: Number, min: 0, max: 8, default: 0 },
+
   groupId: { type: String, default: '' },
   zIndex: { type: Number, default: 0 }
 }, { _id: true })
