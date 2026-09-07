@@ -1,134 +1,133 @@
-import { env } from '../../config/env.js'
-import { AppError } from '../../utils/AppError.js'
+import { env } from "../../config/env.js";
+import { AppError } from "../../utils/AppError.js";
 
 function requireToken() {
-  if (!env.TELEGRAM_BOT_TOKEN) throw new AppError('Telegram bot is not configured', 400)
+  if (!env.TELEGRAM_BOT_TOKEN)
+    throw new AppError("Telegram bot is not configured", 400);
 }
 
 async function telegramCall(method, body = undefined) {
-  requireToken()
+  requireToken();
 
-  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
-    method: 'POST',
-    body
-  })
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,
+    {
+      method: "POST",
+      body,
+    },
+  );
 
-  const data = await response.json()
+  const data = await response.json();
   if (!response.ok || !data.ok) {
-    throw new AppError(data.description || `Telegram ${method} failed`, 502)
+    throw new AppError(data.description || `Telegram ${method} failed`, 502);
   }
 
-  return data.result
+  return data.result;
 }
 
 function basePayslipUrl() {
-  return String(env.TELEGRAM_RETURN_URL || env.FRONTEND_ORIGIN || '')
+  return String(env.TELEGRAM_RETURN_URL || env.FRONTEND_ORIGIN || "")
     .trim()
-    .replace(/\/$/, '')
+    .replace(/\/$/, "");
 }
 
 function employeePortalUrl() {
-  const base = basePayslipUrl()
-  return base ? `${base}/employee` : ''
+  const base = basePayslipUrl();
+  return base ? `${base}/employee` : "";
 }
 
 function canUseInlineUrl(url) {
-  if (!url) return false
+  if (!url) return false;
 
   try {
-    const parsed = new URL(url)
-    const host = parsed.hostname.toLowerCase()
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
 
-    if (['localhost', '127.0.0.1', '::1'].includes(host)) return false
-    return parsed.protocol === 'https:'
+    if (["localhost", "127.0.0.1", "::1"].includes(host)) return false;
+    return parsed.protocol === "https:";
   } catch {
-    return false
+    return false;
   }
 }
 
 export async function getTelegramBotInfo() {
-  return telegramCall('getMe')
+  return telegramCall("getMe");
 }
 
 export async function getTelegramWebhookInfo() {
-  return telegramCall('getWebhookInfo')
+  return telegramCall("getWebhookInfo");
 }
 
-export async function deleteTelegramWebhook({ dropPendingUpdates = false } = {}) {
+export async function deleteTelegramWebhook({
+  dropPendingUpdates = false,
+} = {}) {
   const form = new URLSearchParams({
-    drop_pending_updates: dropPendingUpdates ? 'true' : 'false'
-  })
-  return telegramCall('deleteWebhook', form)
+    drop_pending_updates: dropPendingUpdates ? "true" : "false",
+  });
+  return telegramCall("deleteWebhook", form);
 }
 
 export async function getTelegramUpdates({ offset, timeoutSeconds = 25 } = {}) {
   const form = new URLSearchParams({
     timeout: String(timeoutSeconds),
-    allowed_updates: JSON.stringify(['message'])
-  })
+    allowed_updates: JSON.stringify(["message", "callback_query"]),
+  });
 
   if (Number.isInteger(offset) && offset > 0) {
-    form.append('offset', String(offset))
+    form.append("offset", String(offset));
   }
 
-  return telegramCall('getUpdates', form)
+  return telegramCall("getUpdates", form);
+}
+
+export async function answerTelegramCallback(callbackQueryId) {
+  return telegramCall(
+    "answerCallbackQuery",
+    new URLSearchParams({ callback_query_id: String(callbackQueryId) }),
+  );
 }
 
 export async function sendTelegramMessage(chatId, text, options = {}) {
-  if (!chatId) throw new AppError('Telegram chat ID is required', 400)
+  if (!chatId) throw new AppError("Telegram chat ID is required", 400);
 
   const form = new URLSearchParams({
     chat_id: String(chatId),
-    text: String(text)
-  })
+    text: String(text),
+  });
 
   if (options.replyMarkup) {
-    form.append('reply_markup', JSON.stringify(options.replyMarkup))
+    form.append("reply_markup", JSON.stringify(options.replyMarkup));
   }
 
   if (options.disableWebPagePreview === true) {
-    form.append('link_preview_options', JSON.stringify({ is_disabled: true }))
+    form.append("link_preview_options", JSON.stringify({ is_disabled: true }));
   }
 
-  return telegramCall('sendMessage', form)
+  return telegramCall("sendMessage", form);
 }
 
 /**
  * Telegram is notification-only for released payslips.
  * Salary values and PDF files must never be sent to Telegram.
  */
-export async function sendPayslipAvailableNotification({ chatId, employeeName, periodLabel }) {
-  if (!chatId) throw new AppError('Employee Telegram is not verified', 400)
-
-  const loginUrl = employeePortalUrl()
-  const lines = [
-    '✅ Your e-PaySlip is available.',
-    '',
-    employeeName ? `Employee: ${employeeName}` : '',
-    periodLabel ? `Payroll: ${periodLabel}` : '',
-    '',
-    'Sign in to e-PaySlip to view your payslip.'
-  ].filter((line, index, all) => line !== '' || (index > 0 && all[index - 1] !== ''))
-
-  if (!canUseInlineUrl(loginUrl)) {
-    if (loginUrl) {
-      lines.push('', 'e-PaySlip:', loginUrl)
-    }
-
-    return sendTelegramMessage(chatId, lines.join('\n'), {
-      disableWebPagePreview: true
-    })
-  }
-
-  return sendTelegramMessage(chatId, lines.join('\n'), {
-    disableWebPagePreview: true,
-    replyMarkup: {
-      inline_keyboard: [[
-        {
-          text: 'View e-PaySlip',
-          url: loginUrl
-        }
-      ]]
-    }
-  })
+export async function sendPayslipDocument({
+  chatId,
+  employeeName,
+  periodLabel,
+  pdfBuffer,
+  filename,
+}) {
+  if (!chatId) throw new AppError("Employee Telegram is not verified", 400);
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append(
+    "caption",
+    `e-PaySlip\nEmployee: ${employeeName}\nPayroll: ${periodLabel}\nPDF password: your date of birth (DDMMYYYY).`,
+  );
+  form.append(
+    "document",
+    new Blob([pdfBuffer], { type: "application/pdf" }),
+    filename,
+  );
+  return telegramCall("sendDocument", form);
 }

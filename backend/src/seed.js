@@ -2,7 +2,6 @@ import bcrypt from 'bcryptjs'
 import { connectDb } from './config/db.js'
 import { env } from './config/env.js'
 import { User } from './modules/auth/User.js'
-import { EmployeeAccount } from './modules/auth/EmployeeAccount.js'
 import { normalizeLoginId } from './modules/auth/auth.service.js'
 import { PayPeriod } from './modules/payPeriods/PayPeriod.js'
 import { PayslipDesign } from './modules/payslips/PayslipDesign.js'
@@ -11,11 +10,6 @@ import { createDefaultPayslipDesign } from './modules/payslips/defaultPayslipDes
 await connectDb()
 
 const rootLoginId = normalizeLoginId(env.ROOT_ADMIN_ID)
-const employeeCollision = await EmployeeAccount.exists({ loginId: rootLoginId })
-if (employeeCollision) {
-  throw new Error(`ROOT_ADMIN_ID ${rootLoginId} is already used by an employee account`)
-}
-
 const passwordHash = await bcrypt.hash(env.ROOT_ADMIN_PASSWORD, 12)
 let admin = await User.findOne({ role: 'ROOT_ADMIN' }).select('+passwordHash')
 

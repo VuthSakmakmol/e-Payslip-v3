@@ -22,13 +22,13 @@ export async function sendPayslipEmail({
   filename,
   passwordProtected = false,
 }) {
-  if (!to) throw new AppError("Employee company email is missing", 400);
+  if (!to) throw new AppError("Employee email is missing", 400);
   return transporter().sendMail({
     from: env.SMTP_FROM,
     to,
     subject: `e-PaySlip - ${periodLabel}`,
     text: passwordProtected
-      ? `Dear ${employeeName},\n\nPlease find your password-protected payslip attached. Use your e-PaySlip PDF Password to open the file.\n\nRegards,\ne-PaySlip`
+      ? `Dear ${employeeName},\n\nPlease find your password-protected payslip attached. Use your date of birth in DDMMYYYY format to open the file.\n\nRegards,\ne-PaySlip`
       : `Dear ${employeeName},\n\nPlease find your payslip attached.\n\nRegards,\ne-PaySlip`,
     attachments: [
       { filename, content: pdfBuffer, contentType: "application/pdf" },

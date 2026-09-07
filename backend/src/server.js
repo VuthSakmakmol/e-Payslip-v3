@@ -12,7 +12,6 @@ import employeeRoutes from './modules/employees/employee.routes.js'
 import payPeriodRoutes from './modules/payPeriods/payPeriod.routes.js'
 import payrollRoutes from './modules/payroll/payroll.routes.js'
 import payslipRoutes from './modules/payslips/payslip.routes.js'
-import employeePayslipRoutes from './modules/payslips/employeePayslip.routes.js'
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js'
 import telegramWebhookRoutes from './modules/delivery/telegramWebhook.routes.js'
 import deliveryRoutes from './modules/delivery/delivery.routes.js'
@@ -20,7 +19,7 @@ import {
   startTelegramPolling,
   stopTelegramPolling
 } from './modules/delivery/telegramPolling.service.js'
-import { requireAuth, requireRootAdmin, requireEmployee } from './modules/auth/auth.middleware.js'
+import { requireAuth, requireRootAdmin } from './modules/auth/auth.middleware.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 
 assertTelegramRuntimeConfig()
@@ -43,7 +42,6 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/telegram', telegramWebhookRoutes)
-app.use('/api/employee-payslips', requireAuth, requireEmployee, employeePayslipRoutes)
 app.use('/api/dashboard', requireAuth, requireRootAdmin, dashboardRoutes)
 app.use('/api/employees', requireAuth, requireRootAdmin, employeeRoutes)
 app.use('/api/pay-periods', requireAuth, requireRootAdmin, payPeriodRoutes)

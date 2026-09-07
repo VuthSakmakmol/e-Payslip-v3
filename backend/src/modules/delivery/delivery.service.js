@@ -1,6 +1,6 @@
 import { DeliveryLog } from './DeliveryLog.js'
 import { sendPayslipEmail } from './email.service.js'
-import { sendPayslipAvailableNotification } from './telegram.service.js'
+import { sendPayslipDocument } from './telegram.service.js'
 
 function maskEmail(email) {
   const [name, domain] = String(email || '').split('@')
@@ -43,10 +43,10 @@ export async function deliverPayslip({ employee, pdfBuffer, filename, periodLabe
 
       // SECURITY RULE: Telegram is notification-only.
       // Never attach or transmit the payslip PDF or payroll amounts to Telegram.
-      await sendPayslipAvailableNotification({
+      await sendPayslipDocument({
         chatId: employee.telegramChatId,
         employeeName: employee.fullName,
-        periodLabel
+        periodLabel, pdfBuffer, filename
       })
     }
   } catch (error) {
