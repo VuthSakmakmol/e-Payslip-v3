@@ -14,8 +14,8 @@
         tone="rose"
       />
       <MetricTile
-        label="Master Only"
-        :value="session.reconciliation.summary.masterOnly"
+        :label="(session?.releaseMode || 'FULL') === 'UPDATE' ? 'Ignored' : 'Master Only'"
+        :value="(session?.releaseMode || 'FULL') === 'UPDATE' ? session.reconciliation.summary.ignoredMaster : session.reconciliation.summary.masterOnly"
         icon="pi pi-users"
         tone="amber"
       />
@@ -38,6 +38,11 @@
             v-if="session"
             :value="`${session.employeeCount} Employees`"
             severity="secondary"
+          />
+          <Tag
+            v-if="session"
+            :value="(session.releaseMode || 'FULL') === 'UPDATE' ? 'Update / Correction' : 'Full Payroll'"
+            :severity="(session.releaseMode || 'FULL') === 'UPDATE' ? 'warn' : 'info'"
           />
           <Tag value="Memory Only" severity="info" />
           <Tag
@@ -244,9 +249,12 @@ async function approve() {
   }
 }
 function confirmRelease() {
+  const isUpdate = (session.value?.releaseMode || "FULL") === "UPDATE";
   confirm.require({
-    header: "Release Payslips",
-    message: "Release foreigner payslips now?",
+    header: isUpdate ? "Release Correction Payslips" : "Release Full Payroll",
+    message: isUpdate
+      ? `Release only the ${session.value?.employeeCount || 0} employees in this correction file? All other employees will be ignored and will not receive another payslip.`
+      : "Release the Full Foreigner Payroll now? All expected foreigner employees must be included.",
     icon: "pi pi-send",
     rejectLabel: "Cancel",
     acceptLabel: "Release",
@@ -262,10 +270,12 @@ async function release() {
     const failed = data.deliveries.filter((x) => x.status === "FAILED").length;
     toast.add({
       severity: failed ? "warn" : "success",
-      summary: "Payroll released",
+      summary: (session.value?.releaseMode || "FULL") === "UPDATE" ? "Correction released" : "Payroll released",
       detail: failed
         ? `${failed} delivery attempt(s) failed.`
-        : "Delivered successfully",
+        : (session.value?.releaseMode || "FULL") === "UPDATE"
+          ? `${data.employeeCount || session.value?.employeeCount || 0} corrected employee payslip(s) released.`
+          : "Delivered successfully",
       life: 5000,
     });
     router.push("/");

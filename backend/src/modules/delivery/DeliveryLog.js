@@ -8,6 +8,8 @@ const deliveryLogSchema = new mongoose.Schema({
   month: { type: Number, required: true },
   payPeriodId: { type: mongoose.Schema.Types.ObjectId, ref: 'PayPeriod', default: null },
   batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'PayrollBatch', default: null },
+  releaseMode: { type: String, enum: ['FULL', 'UPDATE'], default: 'FULL', index: true },
+  correctionNumber: { type: Number, min: 0, default: 0 },
   channel: { type: String, enum: ['EMAIL', 'TELEGRAM'], required: true },
   destinationMasked: { type: String, default: '' },
   status: { type: String, enum: ['SENT', 'FAILED'], required: true, index: true },

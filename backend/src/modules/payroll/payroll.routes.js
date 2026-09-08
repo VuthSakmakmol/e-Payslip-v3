@@ -9,6 +9,13 @@ import { deliverPayslip } from '../delivery/delivery.service.js'
 import { importLocalPayroll, importForeignerPayroll } from './services/payrollImport.service.js'
 import { reconcilePayrollRows, publicReconciliation } from './services/payrollReconciliation.service.js'
 import {
+  normalizeReleaseMode,
+  findPreviousFullRelease,
+  requirePreviousFullRelease,
+  nextCorrectionNumber,
+  createReleaseHistory
+} from './services/payrollReleasePolicy.service.js'
+import {
   getTransientPayroll,
   approveTransientPayroll,
   destroyTransientPayroll
@@ -37,11 +44,34 @@ async function activeDesign() {
   return design
 }
 
+router.get('/release-mode-availability', asyncHandler(async (req, res) => {
+  const staffCategory = String(req.query.staffCategory || '').toUpperCase()
+  const year = Number(req.query.year)
+  const month = Number(req.query.month)
+  const payPeriodId = req.query.payPeriodId || null
+
+  if (!['LOCAL', 'FOREIGNER'].includes(staffCategory)) throw new AppError('staffCategory must be LOCAL or FOREIGNER', 400)
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new AppError('Invalid payroll year', 400)
+  if (!Number.isInteger(month) || month < 1 || month > 12) throw new AppError('Invalid payroll month', 400)
+  if (staffCategory === 'LOCAL' && !payPeriodId) {
+    return res.json({ fullReleaseExists: false, updateAllowed: false, reason: 'Select a pay period first.' })
+  }
+
+  const previous = await findPreviousFullRelease({ staffCategory, year, month, payPeriodId })
+  res.json({
+    fullReleaseExists: previous.exists,
+    updateAllowed: previous.exists,
+    fullEmployeeCount: previous.employeeCount || 0,
+    fullReleasedAt: previous.releasedAt || null
+  })
+}))
+
 router.post('/import', upload.single('file'), asyncHandler(async (req, res) => {
   if (!req.file?.buffer) throw new AppError('Payroll XLSX file is required', 400)
   const staffCategory = String(req.body.staffCategory || '').toUpperCase()
   const year = Number(req.body.year)
   const month = Number(req.body.month)
+  const releaseMode = normalizeReleaseMode(req.body.releaseMode)
 
   if (!['LOCAL', 'FOREIGNER'].includes(staffCategory)) throw new AppError('staffCategory must be LOCAL or FOREIGNER', 400)
   if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new AppError('Invalid payroll year', 400)
@@ -54,6 +84,7 @@ router.post('/import', upload.single('file'), asyncHandler(async (req, res) => {
       year,
       month,
       payPeriodId: req.body.payPeriodId,
+      releaseMode,
       userId: req.user._id
     })
     return res.status(201).json({ mode: 'STORED', batch })
@@ -64,6 +95,7 @@ router.post('/import', upload.single('file'), asyncHandler(async (req, res) => {
     fileName: req.file.originalname,
     year,
     month,
+    releaseMode,
     userId: req.user._id
   })
 
@@ -71,6 +103,7 @@ router.post('/import', upload.single('file'), asyncHandler(async (req, res) => {
     mode: 'TRANSIENT',
     session: {
       id: session.id,
+      releaseMode: session.releaseMode,
       employeeCount: session.rows.length,
       approved: session.approved,
       expiresAt: new Date(session.expiresAt)
@@ -109,7 +142,11 @@ router.get('/batches/:id/reconciliation', asyncHandler(async (req, res) => {
   const batch = await PayrollBatch.findById(req.params.id)
   if (!batch) throw new AppError('Payroll batch not found', 404)
   const records = await PayrollRecord.find({ batchId: batch._id }).sort({ employeeCode: 1 })
-  const reconciliation = await reconcilePayrollRows({ rows: records, expectedCategory: 'LOCAL' })
+  const reconciliation = await reconcilePayrollRows({
+    rows: records,
+    expectedCategory: 'LOCAL',
+    releaseMode: batch.releaseMode || 'FULL'
+  })
   res.json({ reconciliation: publicReconciliation(reconciliation) })
 }))
 
@@ -142,14 +179,29 @@ router.post('/batches/:id/release', asyncHandler(async (req, res) => {
   if (batch.status === 'RELEASED') throw new AppError('Payroll batch is already released', 409)
   if (batch.status !== 'READY') throw new AppError('Payroll batch is not ready for release', 409)
 
+  const releaseMode = batch.releaseMode || 'FULL'
+  if (releaseMode === 'UPDATE') {
+    await requirePreviousFullRelease({
+      staffCategory: 'LOCAL',
+      year: batch.year,
+      month: batch.month,
+      payPeriodId: batch.payPeriodId?._id
+    })
+  }
+
   const design = await activeDesign()
   const records = await PayrollRecord.find({ batchId: batch._id }).sort({ employeeCode: 1 })
-  const reconciliation = await reconcilePayrollRows({ rows: records, expectedCategory: 'LOCAL' })
+  const reconciliation = await reconcilePayrollRows({
+    rows: records,
+    expectedCategory: 'LOCAL',
+    releaseMode
+  })
   if (!reconciliation.clean) {
     throw new AppError('Payroll reconciliation is not clean. Release is blocked.', 409, {
       reconciliation: publicReconciliation(reconciliation)
     })
   }
+
   const employeeMap = reconciliation.employeeByCode
   const periodLabel = `${monthName(batch.month)} ${batch.year} - ${batch.payPeriodId?.name || 'Pay Period'}`
   const deliveryResults = []
@@ -181,6 +233,8 @@ router.post('/batches/:id/release', asyncHandler(async (req, res) => {
         month: batch.month,
         payPeriodId: batch.payPeriodId?._id,
         batchId: batch._id,
+        releaseMode,
+        correctionNumber: releaseMode === 'UPDATE' ? batch.correctionNumber : 0,
         pdfPasswordProtected: true,
         releasedBy: req.user._id
       }
@@ -188,22 +242,41 @@ router.post('/batches/:id/release', asyncHandler(async (req, res) => {
     deliveryResults.push(...logs.map((log) => ({ employeeCode: record.employeeCode, channel: log.channel, status: log.status, errorMessage: log.errorMessage })))
   }
 
+  await createReleaseHistory({
+    staffCategory: 'LOCAL',
+    year: batch.year,
+    month: batch.month,
+    payPeriodId: batch.payPeriodId?._id,
+    releaseMode,
+    correctionNumber: releaseMode === 'UPDATE' ? batch.correctionNumber : 0,
+    sourceBatchId: batch._id,
+    sourceFileName: batch.sourceFileName,
+    employeeCount: records.length,
+    deliveries: deliveryResults,
+    releasedBy: req.user._id
+  })
+
   batch.status = 'RELEASED'
   batch.releasedBy = req.user._id
   batch.releasedAt = new Date()
   await batch.save()
 
-  res.json({ batch, deliveries: deliveryResults })
+  res.json({ batch, releaseMode, correctionNumber: batch.correctionNumber || 0, deliveries: deliveryResults })
 }))
 
 router.get('/transient/:id', asyncHandler(async (req, res) => {
   const session = getTransientPayroll(req.params.id)
-  const reconciliation = await reconcilePayrollRows({ rows: session.rows, expectedCategory: 'FOREIGNER' })
+  const reconciliation = await reconcilePayrollRows({
+    rows: session.rows,
+    expectedCategory: 'FOREIGNER',
+    releaseMode: session.releaseMode || 'FULL'
+  })
   res.json({
     session: {
       id: session.id,
       year: session.year,
       month: session.month,
+      releaseMode: session.releaseMode || 'FULL',
       employeeCount: session.rows.length,
       approved: session.approved,
       expiresAt: new Date(session.expiresAt),
@@ -238,7 +311,18 @@ router.get('/transient/:id/preview/:employeeCode', asyncHandler(async (req, res)
 
 router.post('/transient/:id/approve', asyncHandler(async (req, res) => {
   const current = getTransientPayroll(req.params.id)
-  const reconciliation = await reconcilePayrollRows({ rows: current.rows, expectedCategory: 'FOREIGNER' })
+  if ((current.releaseMode || 'FULL') === 'UPDATE') {
+    await requirePreviousFullRelease({
+      staffCategory: 'FOREIGNER',
+      year: current.year,
+      month: current.month
+    })
+  }
+  const reconciliation = await reconcilePayrollRows({
+    rows: current.rows,
+    expectedCategory: 'FOREIGNER',
+    releaseMode: current.releaseMode || 'FULL'
+  })
   if (!reconciliation.clean) {
     throw new AppError('Payroll reconciliation is not clean. Approval is blocked.', 409, {
       reconciliation: publicReconciliation(reconciliation)
@@ -251,12 +335,31 @@ router.post('/transient/:id/approve', asyncHandler(async (req, res) => {
 router.post('/transient/:id/release', asyncHandler(async (req, res) => {
   const session = getTransientPayroll(req.params.id)
   if (!session.approved) throw new AppError('Foreigner payroll must be previewed and approved before release', 409)
-  const reconciliation = await reconcilePayrollRows({ rows: session.rows, expectedCategory: 'FOREIGNER' })
+
+  const releaseMode = session.releaseMode || 'FULL'
+  let correctionNumber = 0
+
+  if (releaseMode === 'UPDATE') {
+    await requirePreviousFullRelease({ staffCategory: 'FOREIGNER', year: session.year, month: session.month })
+    correctionNumber = await nextCorrectionNumber({ staffCategory: 'FOREIGNER', year: session.year, month: session.month })
+  } else {
+    const previous = await findPreviousFullRelease({ staffCategory: 'FOREIGNER', year: session.year, month: session.month })
+    if (previous.exists) {
+      throw new AppError('A Full Foreigner Payroll has already been released for this month. Use Update / Correction.', 409)
+    }
+  }
+
+  const reconciliation = await reconcilePayrollRows({
+    rows: session.rows,
+    expectedCategory: 'FOREIGNER',
+    releaseMode
+  })
   if (!reconciliation.clean) {
     throw new AppError('Payroll reconciliation is not clean. Release is blocked.', 409, {
       reconciliation: publicReconciliation(reconciliation)
     })
   }
+
   const design = await activeDesign()
   const periodLabel = `${monthName(session.month)} ${session.year}`
   const deliveryResults = []
@@ -267,8 +370,6 @@ router.post('/transient/:id/release', asyncHandler(async (req, res) => {
 
   try {
     for (const row of session.rows) {
-      // Always use the employee's CURRENT delivery setting/contact at release time.
-      // This prevents a stale transient import from keeping an old email or unverified Telegram Chat ID.
       const employee = currentEmployeeMap.get(row.employee.id)
       if (!employee) {
         throw new AppError(`Employee ${row.employeeCode} is missing or inactive at release time`, 409)
@@ -298,22 +399,42 @@ router.post('/transient/:id/release', asyncHandler(async (req, res) => {
             staffCategory: 'FOREIGNER',
             year: session.year,
             month: session.month,
+            releaseMode,
+            correctionNumber,
             pdfPasswordProtected: Boolean(pdfPassword),
             releasedBy: req.user._id
           }
         })
         deliveryResults.push(...logs.map((log) => ({ employeeCode: row.employeeCode, channel: log.channel, status: log.status, errorMessage: log.errorMessage })))
       } finally {
-        // Best-effort overwrite after SMTP/Telegram delivery completes.
         pdfBuffer.fill(0)
       }
     }
+
+    await createReleaseHistory({
+      staffCategory: 'FOREIGNER',
+      year: session.year,
+      month: session.month,
+      releaseMode,
+      correctionNumber,
+      sourceFileName: session.sourceFileName,
+      employeeCount: session.rows.length,
+      deliveries: deliveryResults,
+      releasedBy: req.user._id
+    })
   } finally {
-    // Foreign payroll and PDF buffers are intentionally not retained by the application.
+    // Foreign payroll rows and PDF buffers are intentionally not retained.
     destroyTransientPayroll(session.id)
   }
 
-  res.json({ released: true, deliveries: deliveryResults, payrollRetained: false })
+  res.json({
+    released: true,
+    releaseMode,
+    correctionNumber,
+    employeeCount: session.rows.length,
+    deliveries: deliveryResults,
+    payrollRetained: false
+  })
 }))
 
 export default router

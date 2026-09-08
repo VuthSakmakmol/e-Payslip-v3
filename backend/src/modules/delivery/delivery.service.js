@@ -62,6 +62,8 @@ export async function deliverPayslip({ employee, pdfBuffer, filename, periodLabe
     month: context.month,
     payPeriodId: context.payPeriodId || null,
     batchId: context.batchId || null,
+    releaseMode: context.releaseMode || 'FULL',
+    correctionNumber: context.releaseMode === 'UPDATE' ? Number(context.correctionNumber || 1) : 0,
     channel,
     destinationMasked: channel === 'EMAIL'
       ? maskEmail(employee.companyEmail)

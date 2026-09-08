@@ -72,14 +72,24 @@ function publicEmployee(employee) {
 export function publicReconciliation(result) {
   return {
     clean: result.clean,
+    releaseMode: result.releaseMode,
     summary: result.summary,
     issues: result.issues,
     rows: result.rows
   }
 }
 
-export async function reconcilePayrollRows({ rows, expectedCategory }) {
+/**
+ * FULL: strict two-way completeness. Every active employee in the selected
+ * category must appear in payroll and every payroll row must match Master.
+ *
+ * UPDATE: strict validation only for the uploaded correction population.
+ * Employees outside the uploaded file are deliberately ignored, but every
+ * uploaded row must still exist in Master and match ID/Date Join/Department/Position.
+ */
+export async function reconcilePayrollRows({ rows, expectedCategory, releaseMode = 'FULL' }) {
   const category = String(expectedCategory || '').toUpperCase()
+  const mode = String(releaseMode || 'FULL').toUpperCase() === 'UPDATE' ? 'UPDATE' : 'FULL'
   const payrollCodes = new Set(rows.map((row) => normalizeCode(row.employeeCode)).filter(Boolean))
   const codes = [...payrollCodes]
 
@@ -94,7 +104,6 @@ export async function reconcilePayrollRows({ rows, expectedCategory }) {
       : []
   ])
 
-  const expectedMap = new Map(expectedEmployees.map((employee) => [normalizeCode(employee.employeeCode), employee]))
   const candidateMap = new Map(payrollCandidates.map((employee) => [normalizeCode(employee.employeeCode), employee]))
   const employeeByCode = new Map()
   const issues = []
@@ -127,12 +136,8 @@ export async function reconcilePayrollRows({ rows, expectedCategory }) {
     if (candidate.active === false || candidate.staffCategory !== category) {
       mismatchCount += 1
       const fields = []
-      if (candidate.active === false) {
-        fields.push(fieldComparison('active', 'Status', 'Payroll Row', 'Inactive', false))
-      }
-      if (candidate.staffCategory !== category) {
-        fields.push(fieldComparison('staffCategory', 'Category', category, candidate.staffCategory, false))
-      }
+      if (candidate.active === false) fields.push(fieldComparison('active', 'Status', 'Payroll Row', 'Inactive', false))
+      if (candidate.staffCategory !== category) fields.push(fieldComparison('staffCategory', 'Category', category, candidate.staffCategory, false))
       const issue = {
         ...issueBase('MISMATCH', row, candidate),
         reason: candidate.active === false ? 'Employee is inactive' : 'Employee category mismatch',
@@ -175,7 +180,9 @@ export async function reconcilePayrollRows({ rows, expectedCategory }) {
     rowStatuses.push({ employeeCode: code, status: 'VERIFIED', reason: '' })
   }
 
-  const masterOnly = expectedEmployees.filter((employee) => !payrollCodes.has(normalizeCode(employee.employeeCode)))
+  const notUploaded = expectedEmployees.filter((employee) => !payrollCodes.has(normalizeCode(employee.employeeCode)))
+  const masterOnly = mode === 'FULL' ? notUploaded : []
+
   for (const employee of masterOnly) {
     const details = publicEmployee(employee)
     issues.push({
@@ -200,10 +207,12 @@ export async function reconcilePayrollRows({ rows, expectedCategory }) {
     verified: verifiedCount,
     payrollOnly: payrollOnlyCount,
     masterOnly: masterOnly.length,
+    ignoredMaster: mode === 'UPDATE' ? notUploaded.length : 0,
     mismatch: mismatchCount
   }
 
   return {
+    releaseMode: mode,
     clean: summary.payrollOnly === 0 && summary.masterOnly === 0 && summary.mismatch === 0 && summary.verified === rows.length,
     summary,
     issues,

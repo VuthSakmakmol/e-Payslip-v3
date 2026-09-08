@@ -47,6 +47,14 @@
           </div>
         </template>
       </Column>
+      <Column header="Release Type" style="min-width: 150px">
+        <template #body="{ data }">
+          <Tag
+            :value="releaseLabel(data)"
+            :severity="(data.releaseMode || 'FULL') === 'UPDATE' ? 'warn' : 'info'"
+          />
+        </template>
+      </Column>
       <Column header="Employees" field="employeeCount" style="width: 120px" />
       <Column header="Status" style="width: 130px">
         <template #body="{ data }"
@@ -93,6 +101,12 @@ const monthName = (m) =>
   );
 function statusLabel(status) {
   return String(status || "").replaceAll("_", " ");
+}
+function releaseLabel(batch) {
+  const mode = batch?.releaseMode || "FULL";
+  return mode === "UPDATE"
+    ? `Update #${batch?.correctionNumber || 1}`
+    : "Full Payroll";
 }
 function statusSeverity(status) {
   if (status === "RELEASED") return "success";

@@ -1,23 +1,26 @@
-import { PayPeriod } from "../../payPeriods/PayPeriod.js";
-import { PayrollBatch } from "../models/PayrollBatch.js";
-import { PayrollRecord } from "../models/PayrollRecord.js";
-import { PAYROLL_TEMPLATE_VERSION } from "../constants/companyPayrollLayout.js";
-import { parsePayrollWorkbook } from "./payrollParser.service.js";
-import { createTransientPayroll } from "./transientPayroll.service.js";
+import { PayPeriod } from '../../payPeriods/PayPeriod.js'
+import { PayrollBatch } from '../models/PayrollBatch.js'
+import { PayrollRecord } from '../models/PayrollRecord.js'
+import { PAYROLL_TEMPLATE_VERSION } from '../constants/companyPayrollLayout.js'
+import { parsePayrollWorkbook } from './payrollParser.service.js'
+import { createTransientPayroll } from './transientPayroll.service.js'
+import { reconcilePayrollRows, publicReconciliation } from './payrollReconciliation.service.js'
 import {
-  reconcilePayrollRows,
-  publicReconciliation,
-} from "./payrollReconciliation.service.js";
-import { AppError } from "../../../utils/AppError.js";
+  normalizeReleaseMode,
+  findPreviousFullRelease,
+  requirePreviousFullRelease,
+  nextCorrectionNumber
+} from './payrollReleasePolicy.service.js'
+import { AppError } from '../../../utils/AppError.js'
 
-async function requireCleanReconciliation(rows, expectedCategory) {
-  const reconciliation = await reconcilePayrollRows({ rows, expectedCategory });
+async function requireCleanReconciliation(rows, expectedCategory, releaseMode) {
+  const reconciliation = await reconcilePayrollRows({ rows, expectedCategory, releaseMode })
   if (!reconciliation.clean) {
-    throw new AppError("Payroll reconciliation required", 422, {
-      reconciliation: publicReconciliation(reconciliation),
-    });
+    throw new AppError('Payroll reconciliation required', 422, {
+      reconciliation: publicReconciliation(reconciliation)
+    })
   }
-  return reconciliation;
+  return reconciliation
 }
 
 export async function importLocalPayroll({
@@ -26,60 +29,91 @@ export async function importLocalPayroll({
   year,
   month,
   payPeriodId,
-  userId,
+  releaseMode = 'FULL',
+  userId
 }) {
-  const payPeriod = await PayPeriod.findOne({ _id: payPeriodId, active: true });
-  if (!payPeriod) throw new AppError("Active pay period not found", 400);
+  const mode = normalizeReleaseMode(releaseMode)
+  const payPeriod = await PayPeriod.findOne({ _id: payPeriodId, active: true })
+  if (!payPeriod) throw new AppError('Active pay period not found', 400)
 
-  const duplicate = await PayrollBatch.findOne({
-    year,
-    month,
-    payPeriodId,
-    status: { $in: ["READY", "RELEASED"] },
-  });
-  if (duplicate)
-    throw new AppError(
-      "A local payroll batch already exists for this month and pay period",
-      409,
-    );
+  let correctionNumber = 0
+  let correctionOfBatchId = null
 
-  const parsed = parsePayrollWorkbook(buffer);
-  const reconciliation = await requireCleanReconciliation(parsed.rows, "LOCAL");
+  if (mode === 'FULL') {
+    const duplicate = await PayrollBatch.findOne({
+      staffCategory: 'LOCAL',
+      year,
+      month,
+      payPeriodId,
+      status: { $in: ['READY', 'RELEASED'] },
+      $or: [
+        { releaseMode: 'FULL' },
+        { releaseMode: { $exists: false } },
+        { releaseMode: null }
+      ]
+    })
+    if (duplicate) {
+      throw new AppError(
+        'A Full Payroll already exists for this month and pay period. Use Update / Correction only when correcting selected employees after the Full Payroll is released.',
+        409
+      )
+    }
+  } else {
+    const previous = await requirePreviousFullRelease({
+      staffCategory: 'LOCAL',
+      year,
+      month,
+      payPeriodId
+    })
+    correctionNumber = await nextCorrectionNumber({
+      staffCategory: 'LOCAL',
+      year,
+      month,
+      payPeriodId
+    })
+    correctionOfBatchId = previous.batchId || null
+  }
+
+  const parsed = parsePayrollWorkbook(buffer)
+  const reconciliation = await requireCleanReconciliation(parsed.rows, 'LOCAL', mode)
 
   const batch = await PayrollBatch.create({
-    staffCategory: "LOCAL",
+    staffCategory: 'LOCAL',
     year,
     month,
     payPeriodId,
+    releaseMode: mode,
+    correctionNumber,
+    correctionOfBatchId,
     templateVersion: PAYROLL_TEMPLATE_VERSION,
     sourceFileName: fileName,
     employeeCount: parsed.rows.length,
     importedBy: userId,
-    status: "READY",
-  });
+    status: 'READY'
+  })
 
   try {
     await PayrollRecord.insertMany(
       parsed.rows.map((row) => {
-        const employee = reconciliation.employeeByCode.get(row.employeeCode);
+        const employee = reconciliation.employeeByCode.get(row.employeeCode)
         return {
           batchId: batch._id,
           employeeId: employee._id,
           employeeCode: row.employeeCode,
           templateVersion: PAYROLL_TEMPLATE_VERSION,
           sourceRow: row.sourceRow,
-          values: row.values,
-        };
+          values: row.values
+        }
       }),
-      { ordered: true },
-    );
+      { ordered: true }
+    )
   } catch (error) {
-    await PayrollRecord.deleteMany({ batchId: batch._id });
-    await PayrollBatch.deleteOne({ _id: batch._id });
-    throw error;
+    await PayrollRecord.deleteMany({ batchId: batch._id })
+    await PayrollBatch.deleteOne({ _id: batch._id })
+    throw error
   }
 
-  return batch.populate("payPeriodId");
+  return batch.populate('payPeriodId')
 }
 
 export async function importForeignerPayroll({
@@ -87,24 +121,45 @@ export async function importForeignerPayroll({
   fileName,
   year,
   month,
-  userId,
+  releaseMode = 'FULL',
+  userId
 }) {
-  const parsed = parsePayrollWorkbook(buffer);
-  const reconciliation = await requireCleanReconciliation(
-    parsed.rows,
-    "FOREIGNER",
-  );
+  const mode = normalizeReleaseMode(releaseMode)
 
-  // IMPORTANT: this data is never written to MongoDB. It exists only in process memory until release/expiry.
+  if (mode === 'FULL') {
+    const previous = await findPreviousFullRelease({
+      staffCategory: 'FOREIGNER',
+      year,
+      month
+    })
+    if (previous.exists) {
+      throw new AppError(
+        'A Full Foreigner Payroll has already been released for this month. Use Update / Correction for selected employees.',
+        409
+      )
+    }
+  } else {
+    await requirePreviousFullRelease({
+      staffCategory: 'FOREIGNER',
+      year,
+      month
+    })
+  }
+
+  const parsed = parsePayrollWorkbook(buffer)
+  const reconciliation = await requireCleanReconciliation(parsed.rows, 'FOREIGNER', mode)
+
+  // IMPORTANT: foreigner payroll rows remain memory-only. Release history stores metadata only.
   return createTransientPayroll({
-    staffCategory: "FOREIGNER",
+    staffCategory: 'FOREIGNER',
     year,
     month,
+    releaseMode: mode,
     sourceFileName: fileName,
     templateVersion: PAYROLL_TEMPLATE_VERSION,
     importedBy: userId,
     rows: parsed.rows.map((row) => {
-      const employee = reconciliation.employeeByCode.get(row.employeeCode);
+      const employee = reconciliation.employeeByCode.get(row.employeeCode)
       return {
         sourceRow: row.sourceRow,
         employeeCode: row.employeeCode,
@@ -114,10 +169,10 @@ export async function importForeignerPayroll({
           fullName: employee.fullName,
           companyEmail: employee.companyEmail,
           telegramChatId: employee.telegramChatId,
-          preferredDelivery: employee.preferredDelivery,
+          preferredDelivery: employee.preferredDelivery
         },
-        values: row.values,
-      };
-    }),
-  });
+        values: row.values
+      }
+    })
+  })
 }

@@ -14,8 +14,8 @@
         tone="rose"
       />
       <MetricTile
-        label="Master Only"
-        :value="reconciliation.summary.masterOnly"
+        :label="(batch?.releaseMode || 'FULL') === 'UPDATE' ? 'Ignored' : 'Master Only'"
+        :value="(batch?.releaseMode || 'FULL') === 'UPDATE' ? reconciliation.summary.ignoredMaster : reconciliation.summary.masterOnly"
         icon="pi pi-users"
         tone="amber"
       />
@@ -42,6 +42,11 @@
             v-if="batch"
             :value="batch.status"
             :severity="batch.status === 'RELEASED' ? 'success' : 'info'"
+          />
+          <Tag
+            v-if="batch"
+            :value="releaseLabel(batch)"
+            :severity="(batch.releaseMode || 'FULL') === 'UPDATE' ? 'warn' : 'info'"
           />
           <Tag
             v-if="reconciliation"
@@ -271,6 +276,12 @@ function revoke() {
     previewUrl.value = "";
   }
 }
+function releaseLabel(item) {
+  const mode = item?.releaseMode || "FULL";
+  return mode === "UPDATE"
+    ? `Update #${item?.correctionNumber || 1}`
+    : "Full Payroll";
+}
 function statusLabel(status) {
   if (status === "PAYROLL_ONLY") return "Payroll Only";
   if (status === "MASTER_ONLY") return "Master Only";
@@ -379,9 +390,12 @@ async function previewRecord(row) {
   previewUrl.value = URL.createObjectURL(response.data);
 }
 function confirmRelease() {
+  const isUpdate = (batch.value?.releaseMode || "FULL") === "UPDATE";
   confirm.require({
-    header: "Release Payslips",
-    message: "Release this payroll batch?",
+    header: isUpdate ? "Release Correction Payslips" : "Release Full Payroll",
+    message: isUpdate
+      ? `Release this correction to only ${batch.value?.employeeCount || records.value.length} uploaded employees? Employees outside this correction batch will not receive another payslip.`
+      : "Release the Full Payroll? The system requires the complete expected employee population.",
     icon: "pi pi-send",
     rejectLabel: "Cancel",
     acceptLabel: "Release",
@@ -397,10 +411,12 @@ async function release() {
     const failed = data.deliveries.filter((x) => x.status === "FAILED").length;
     toast.add({
       severity: failed ? "warn" : "success",
-      summary: "Payroll released",
+      summary: (batch.value?.releaseMode || "FULL") === "UPDATE" ? "Correction released" : "Payroll released",
       detail: failed
         ? `${failed} delivery attempt(s) failed.`
-        : "Delivered successfully",
+        : (batch.value?.releaseMode || "FULL") === "UPDATE"
+          ? `${data.batch?.employeeCount || records.value.length} corrected employee payslip(s) released.`
+          : "Delivered successfully",
       life: 5000,
     });
     await Promise.all([loadBatch(), loadReconciliation()]);

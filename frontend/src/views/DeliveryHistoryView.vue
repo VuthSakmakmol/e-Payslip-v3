@@ -54,6 +54,14 @@
           </div></template
         >
       </Column>
+      <Column header="Release" style="min-width: 145px">
+        <template #body="{ data }">
+          <Tag
+            :value="releaseLabel(data)"
+            :severity="(data.releaseMode || 'FULL') === 'UPDATE' ? 'warn' : 'info'"
+          />
+        </template>
+      </Column>
       <Column header="Channel" style="min-width: 110px">
         <template #body="{ data }"
           ><Tag
@@ -107,6 +115,12 @@ const monthName = (m) =>
     new Date(2020, m - 1, 1),
   );
 const formatDate = (v) => (v ? new Date(v).toLocaleString() : "—");
+function releaseLabel(item) {
+  const mode = item?.releaseMode || "FULL";
+  return mode === "UPDATE"
+    ? `Update #${item?.correctionNumber || 1}`
+    : "Full Payroll";
+}
 async function load(p = 1) {
   loading.value = true;
   try {
