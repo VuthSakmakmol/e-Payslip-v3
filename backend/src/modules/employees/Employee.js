@@ -45,8 +45,8 @@ const employeeSchema = new mongoose.Schema(
       index: true,
     },
     dateJoin: { type: Date, required: true, index: true },
-    dateOfBirth: { type: Date, required: true },
     department: { type: String, default: "", trim: true, index: true },
+    line: { type: String, default: "", trim: true, index: true },
     position: { type: String, default: "", trim: true, index: true },
     companyEmail: { type: String, default: "", lowercase: true, trim: true },
     telegramChatId: { type: String, default: "", trim: true },
@@ -63,3 +63,30 @@ const employeeSchema = new mongoose.Schema(
 );
 
 export const Employee = mongoose.model("Employee", employeeSchema);
+
+
+export async function cleanupLegacyEmployeeDateOfBirth() {
+  const result = await Employee.collection.updateMany(
+    { dateOfBirth: { $exists: true } },
+    { $unset: { dateOfBirth: '' } },
+  );
+  return result.modifiedCount || 0;
+}
+
+export async function normalizeExistingEmployeeEmails() {
+  const result = await Employee.collection.updateMany(
+    { companyEmail: { $type: "string", $ne: "" } },
+    [
+      {
+        $set: {
+          companyEmail: {
+            $toLower: {
+              $trim: { input: "$companyEmail" },
+            },
+          },
+        },
+      },
+    ],
+  );
+  return result.modifiedCount || 0;
+}

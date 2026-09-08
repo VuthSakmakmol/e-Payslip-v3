@@ -22,7 +22,6 @@ const schema = z.object({
 
   CREDENTIAL_ENCRYPTION_SECRET: z.string().optional().default(''),
 
-  ALLOWED_EMAIL_DOMAINS: z.string().default(''),
   TRANSIENT_PAYROLL_TTL_MINUTES: z.coerce.number().int().positive().default(30),
 
   SMTP_HOST: z.string().optional().default(''),
@@ -54,10 +53,6 @@ if (!parsed.success) {
 
 export const env = parsed.data
 
-export const allowedEmailDomains = env.ALLOWED_EMAIL_DOMAINS
-  .split(',')
-  .map((value) => value.trim().toLowerCase())
-  .filter(Boolean)
 
 export function telegramReturnButtonAvailable() {
   const candidate = String(env.TELEGRAM_RETURN_URL || '').trim()

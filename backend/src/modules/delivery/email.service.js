@@ -28,7 +28,7 @@ export async function sendPayslipEmail({
     to,
     subject: `e-PaySlip - ${periodLabel}`,
     text: passwordProtected
-      ? `Dear ${employeeName},\n\nPlease find your password-protected payslip attached. Use your date of birth in DDMMYYYY format to open the file.\n\nRegards,\ne-PaySlip`
+      ? `Dear ${employeeName},\n\nPlease find your password-protected payslip attached. Open it with your personal 6-digit e-PaySlip PDF password provided separately by HR. For security, the password is not included in this email.\n\nRegards,\ne-PaySlip`
       : `Dear ${employeeName},\n\nPlease find your payslip attached.\n\nRegards,\ne-PaySlip`,
     attachments: [
       { filename, content: pdfBuffer, contentType: "application/pdf" },

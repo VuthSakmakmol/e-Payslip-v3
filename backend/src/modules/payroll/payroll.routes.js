@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { Employee } from '../employees/Employee.js'
+import { ensurePayslipPassword } from '../auth/payslipCredential.service.js'
 import { PayrollBatch } from './models/PayrollBatch.js'
 import { PayrollRecord } from './models/PayrollRecord.js'
 import { PayslipDesign } from '../payslips/PayslipDesign.js'
@@ -31,12 +32,6 @@ const upload = multer({
 
 const monthName = (month) => new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(Date.UTC(2020, month - 1, 1)))
 
-function dobPdfPassword(employee) {
-  const value = employee?.dateOfBirth
-  const date = value instanceof Date ? value : new Date(value)
-  if (!value || Number.isNaN(date.getTime())) throw new AppError(`Date of Birth is missing for employee ${employee?.employeeCode || ''}`, 409)
-  return `${String(date.getUTCDate()).padStart(2, '0')}${String(date.getUTCMonth() + 1).padStart(2, '0')}${date.getUTCFullYear()}`
-}
 
 async function activeDesign() {
   const design = await PayslipDesign.findOne({ active: true }).sort({ updatedAt: -1 })
@@ -212,7 +207,7 @@ router.post('/batches/:id/release', asyncHandler(async (req, res) => {
     const pdfBuffer = await renderPayslipPdf({
       design,
       payrollValues: record.values,
-      password: dobPdfPassword(employee),
+      password: await ensurePayslipPassword(employee),
       context: {
         year: batch.year,
         month: batch.month,
@@ -374,7 +369,7 @@ router.post('/transient/:id/release', asyncHandler(async (req, res) => {
       if (!employee) {
         throw new AppError(`Employee ${row.employeeCode} is missing or inactive at release time`, 409)
       }
-      const pdfPassword = dobPdfPassword(employee)
+      const pdfPassword = await ensurePayslipPassword(employee)
 
       const pdfBuffer = await renderPayslipPdf({
         design,

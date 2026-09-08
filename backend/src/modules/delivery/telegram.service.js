@@ -122,7 +122,7 @@ export async function sendPayslipDocument({
   form.append("chat_id", String(chatId));
   form.append(
     "caption",
-    `e-PaySlip\nEmployee: ${employeeName}\nPayroll: ${periodLabel}\nPDF password: your date of birth (DDMMYYYY).`,
+    `e-PaySlip\nEmployee: ${employeeName}\nPayroll: ${periodLabel}\nOpen the PDF with your personal 6-digit e-PaySlip PDF password provided separately by HR.`,
   );
   form.append(
     "document",

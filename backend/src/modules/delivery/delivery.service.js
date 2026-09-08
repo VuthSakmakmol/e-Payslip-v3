@@ -26,7 +26,7 @@ export async function deliverPayslip({ employee, pdfBuffer, filename, periodLabe
 
   try {
     if (channel === 'EMAIL') {
-      if (!employee.companyEmail) throw new Error('Employee company email is not configured')
+      if (!employee.companyEmail) throw new Error('Employee email address is not configured')
 
       // EMAIL keeps its existing PDF delivery behavior.
       // FOREIGNER + EMAIL receives the password-protected in-memory PDF.

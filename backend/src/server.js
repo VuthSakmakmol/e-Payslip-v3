@@ -9,6 +9,10 @@ import {
 } from './config/env.js'
 import authRoutes from './modules/auth/auth.routes.js'
 import employeeRoutes from './modules/employees/employee.routes.js'
+import {
+  cleanupLegacyEmployeeDateOfBirth,
+  normalizeExistingEmployeeEmails
+} from './modules/employees/Employee.js'
 import payPeriodRoutes from './modules/payPeriods/payPeriod.routes.js'
 import payrollRoutes from './modules/payroll/payroll.routes.js'
 import payslipRoutes from './modules/payslips/payslip.routes.js'
@@ -24,6 +28,16 @@ import { errorHandler, notFound } from './middleware/errorHandler.js'
 
 assertTelegramRuntimeConfig()
 await connectDb()
+
+const removedLegacyDobCount = await cleanupLegacyEmployeeDateOfBirth()
+if (removedLegacyDobCount > 0) {
+  console.log(`[employee] removed legacy Date of Birth from ${removedLegacyDobCount} employee record(s)`)
+}
+
+const normalizedEmailCount = await normalizeExistingEmployeeEmails()
+if (normalizedEmailCount > 0) {
+  console.log(`[employee] normalized ${normalizedEmailCount} employee email address(es) to lowercase`)
+}
 
 const app = express()
 app.disable('x-powered-by')

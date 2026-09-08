@@ -95,11 +95,11 @@ export async function reconcilePayrollRows({ rows, expectedCategory, releaseMode
 
   const [expectedEmployees, payrollCandidates] = await Promise.all([
     Employee.find({ staffCategory: category, active: true })
-      .select('_id employeeCode fullName dateJoin dateOfBirth department position staffCategory active preferredDelivery companyEmail telegramChatId telegramProfile')
+      .select('_id employeeCode fullName dateJoin department position staffCategory active preferredDelivery companyEmail telegramChatId telegramProfile')
       .lean(),
     codes.length
       ? Employee.find({ employeeCode: { $in: codes } })
-        .select('_id employeeCode fullName dateJoin dateOfBirth department position staffCategory active preferredDelivery companyEmail telegramChatId telegramProfile')
+        .select('_id employeeCode fullName dateJoin department position staffCategory active preferredDelivery companyEmail telegramChatId telegramProfile')
         .lean()
       : []
   ])
