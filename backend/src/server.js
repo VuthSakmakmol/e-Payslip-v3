@@ -29,7 +29,7 @@ const app = express()
 app.disable('x-powered-by')
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 app.use(cors({ origin: env.FRONTEND_ORIGIN, credentials: false }))
-app.use(express.json({ limit: '2mb' }))
+app.use(express.json({ limit: '6mb' }))
 
 app.get('/api/health', (req, res) => {
   res.json({

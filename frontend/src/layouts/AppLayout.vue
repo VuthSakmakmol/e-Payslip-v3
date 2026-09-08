@@ -1,5 +1,5 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed }">
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-mark"><i class="pi pi-receipt" /></span>
@@ -8,7 +8,13 @@
       </div>
 
       <nav class="nav-list">
-        <RouterLink v-for="item in menu" :key="item.to" :to="item.to" class="nav-item" v-tooltip.right="item.label">
+        <RouterLink
+          v-for="item in menu"
+          :key="item.to"
+          :to="item.to"
+          class="nav-item"
+          v-tooltip.right="sidebarCollapsed ? item.label : undefined"
+        >
           <i :class="item.icon" />
           <span>{{ item.label }}</span>
         </RouterLink>
@@ -27,7 +33,19 @@
 
     <main class="main-panel">
       <header class="topbar">
-        <strong class="topbar-title">{{ routeTitle }}</strong>
+        <div class="topbar-heading">
+          <Button
+            :icon="sidebarCollapsed ? 'pi pi-bars' : 'pi pi-chevron-left'"
+            severity="secondary"
+            text
+            rounded
+            class="sidebar-toggle"
+            v-tooltip.bottom="sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'"
+            @click="toggleSidebar"
+          />
+          <strong class="topbar-title">{{ routeTitle }}</strong>
+        </div>
+
         <div class="topbar-actions">
           <Button
             icon="pi pi-user"
@@ -49,7 +67,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
@@ -60,6 +78,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const userMenu = ref()
+const sidebarCollapsed = ref(localStorage.getItem('epayslip.sidebar.collapsed') === '1')
 
 const menu = [
   { label: 'Dashboard', icon: 'pi pi-home', to: '/' },
@@ -86,6 +105,16 @@ const userMenuItems = computed(() => [
   { separator: true },
   { label: 'Logout', icon: 'pi pi-sign-out', command: logout }
 ])
+
+watch(sidebarCollapsed, (value) => {
+  localStorage.setItem('epayslip.sidebar.collapsed', value ? '1' : '0')
+})
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+  window.setTimeout(() => window.dispatchEvent(new Event('resize')), 220)
+}
 
 function toggleMenu(event) {
   userMenu.value.toggle(event)

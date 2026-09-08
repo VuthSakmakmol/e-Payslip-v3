@@ -10,6 +10,9 @@
     "verify:vue": "node ./scripts/verifyVuePlugin.js"
   },
   "dependencies": {
+    "@pdfme/common": "6.1.12",
+    "@pdfme/schemas": "6.1.12",
+    "@pdfme/ui": "6.1.12",
     "@primeuix/themes": "^3.0.0",
     "axios": "^1.20.0",
     "pinia": "^4.0.3",

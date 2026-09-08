@@ -8,8 +8,8 @@
         </IconField>
       </div>
       <div class="toolbar-right">
-        <Button label="Default" icon="pi pi-file" severity="secondary" outlined @click="createDefault" />
-        <Button label="New Design" icon="pi pi-plus" @click="createBlank" />
+        <Button label="Blank" icon="pi pi-file" severity="secondary" outlined @click="createBlank" />
+        <Button label="New Design" icon="pi pi-plus" @click="createDefault" />
       </div>
     </div>
 
