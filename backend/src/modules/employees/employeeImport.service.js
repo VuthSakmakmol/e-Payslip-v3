@@ -165,7 +165,7 @@ export function buildEmployeeImportTemplate() {
     ['Delivery Channel', 'EMAIL or TELEGRAM.'],
     ['Email Address', 'Required only for EMAIL. Personal and company email addresses are both allowed. Email is automatically saved in lowercase. Leave blank for TELEGRAM.'],
     ['Status', 'Optional. ACTIVE or INACTIVE. Blank defaults to ACTIVE.'],
-    ['Telegram', 'A first-time XX-XX-XX Telegram verification password is generated automatically for imported TELEGRAM employees.']
+    ['e-PaySlip Password', 'Every imported employee receives one unique 6-digit password such as 483271. The same password opens the PDF and is used for first-time Telegram verification. No hyphens are used.']
   ]
   const instructionsSheet = XLSX.utils.aoa_to_sheet(instructions)
   instructionsSheet['!cols'] = [{ wch: 22 }, { wch: 100 }]

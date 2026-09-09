@@ -9,6 +9,11 @@ const payslipCredentialSchema = new mongoose.Schema(
       unique: true,
       index: true
     },
+    passwordHash: {
+      type: String,
+      default: '',
+      select: false
+    },
     passwordFingerprint: {
       type: String,
       required: true,
@@ -20,9 +25,15 @@ const payslipCredentialSchema = new mongoose.Schema(
       required: true,
       select: false
     },
+    telegramFailedAttempts: { type: Number, default: 0 },
+    telegramLockedUntil: { type: Date, default: null },
+    telegramVerifiedAt: { type: Date, default: null },
     rotatedAt: { type: Date, default: null }
   },
   { timestamps: true }
 )
 
+// This is now the single employee e-PaySlip credential.
+// The same six-digit password opens PDFs and verifies Telegram on first link.
+// The model name is kept for backward compatibility with existing MongoDB data.
 export const PayslipCredential = mongoose.model('PayslipCredential', payslipCredentialSchema)

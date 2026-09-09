@@ -3,10 +3,7 @@
     <div class="surface-panel import-panel">
       <div class="app-toolbar">
         <div class="toolbar-left">
-          <Tag
-            :value="form.staffCategory === 'LOCAL' ? 'Stored Payroll' : 'Memory Only'"
-            :severity="form.staffCategory === 'LOCAL' ? 'success' : 'warn'"
-          />
+          <Tag value="Memory Only" severity="info" />
           <Tag
             :value="form.releaseMode === 'UPDATE' ? 'Update / Correction' : 'Full Payroll'"
             :severity="form.releaseMode === 'UPDATE' ? 'warn' : 'info'"
@@ -300,24 +297,14 @@ async function submit() {
     fd.append('month', String(form.month))
     if (form.staffCategory === 'LOCAL') fd.append('payPeriodId', form.payPeriodId)
 
-    const { data } = await api.post('/payroll/import', fd)
-    if (data.mode === 'TRANSIENT') {
-      toast.add({
-        severity: 'success',
-        summary: form.releaseMode === 'UPDATE' ? 'Correction payroll loaded' : 'Payroll loaded',
-        detail: `${data.session.employeeCount} employees`,
-        life: 2600
-      })
-      router.push(`/payroll/foreigner/${data.session.id}`)
-    } else {
-      toast.add({
-        severity: 'success',
-        summary: form.releaseMode === 'UPDATE' ? 'Correction payroll imported' : 'Payroll imported',
-        detail: `${data.batch.employeeCount} employees`,
-        life: 2500
-      })
-      router.push(`/payroll/batches/${data.batch._id}`)
-    }
+    const { data } = await api.post('/payroll/import', fd, { timeout: 0 })
+    toast.add({
+      severity: 'success',
+      summary: form.releaseMode === 'UPDATE' ? 'Correction payroll loaded' : 'Payroll loaded',
+      detail: `${data.session.employeeCount} employees · memory only`,
+      life: 2600
+    })
+    router.push(`/payroll/preview/${data.session.id}`)
   } catch (error) {
     const result = error.response?.data?.details?.reconciliation
     if (result) {

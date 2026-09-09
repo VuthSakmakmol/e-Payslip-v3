@@ -23,6 +23,8 @@ import {
   startTelegramPolling,
   stopTelegramPolling
 } from './modules/delivery/telegramPolling.service.js'
+import { cleanupLegacyTelegramCredentialCollection } from './modules/auth/payslipCredential.service.js'
+import { purgeLegacyStoredPayrollData } from './modules/payroll/services/payrollPrivacy.service.js'
 import { requireAuth, requireRootAdmin } from './modules/auth/auth.middleware.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 
@@ -37,6 +39,16 @@ if (removedLegacyDobCount > 0) {
 const normalizedEmailCount = await normalizeExistingEmployeeEmails()
 if (normalizedEmailCount > 0) {
   console.log(`[employee] normalized ${normalizedEmailCount} employee email address(es) to lowercase`)
+}
+
+const removedLegacyTelegramCredentialCount = await cleanupLegacyTelegramCredentialCollection()
+if (removedLegacyTelegramCredentialCount > 0) {
+  console.log(`[auth] removed ${removedLegacyTelegramCredentialCount} legacy separate Telegram credential(s); the shared e-PaySlip password is now used`)
+}
+
+const payrollPrivacyCleanup = await purgeLegacyStoredPayrollData()
+if (payrollPrivacyCleanup.recordsDeleted || payrollPrivacyCleanup.batchesDeleted) {
+  console.log(`[payroll] privacy cleanup removed ${payrollPrivacyCleanup.recordsDeleted} stored payroll row(s) and ${payrollPrivacyCleanup.batchesDeleted} legacy payroll batch(es)`)
 }
 
 const app = express()

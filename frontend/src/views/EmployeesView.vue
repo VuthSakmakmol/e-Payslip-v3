@@ -25,7 +25,7 @@
         <div class="toolbar-right">
           <Button label="Import Employees" icon="pi pi-upload" severity="secondary" outlined @click="openImport" />
           <Button label="Export" icon="pi pi-file-excel" severity="secondary" outlined :loading="exporting"
-            v-tooltip.top="'Export PDF passwords and pending Telegram verification passwords'" @click="exportCredentials" />
+            v-tooltip.top="'Export employee 6-digit e-PaySlip passwords'" @click="exportCredentials" />
           <Button label="Add Employee" icon="pi pi-plus" @click="openCreate" />
         </div>
       </div>
@@ -92,19 +92,14 @@
           </template>
         </Column>
 
-        <Column header="PDF Password" style="min-width: 125px">
+        <Column header="e-PaySlip Password" style="min-width: 150px">
           <template #body="{ data }">
-            <code v-if="data.pdfPassword" class="inline-code">{{ data.pdfPassword }}</code>
-            <span v-else>—</span>
-          </template>
-        </Column>
-
-        <Column header="Telegram Verification" style="min-width: 155px">
-          <template #body="{ data }">
-            <code v-if="data.temporaryPassword" class="inline-code">{{ data.temporaryPassword }}</code>
-            <Tag v-else-if="data.telegramVerified" value="Used" severity="success" />
-            <Tag v-else-if="data.preferredDelivery === 'EMAIL'" value="Not required" severity="info" />
-            <span v-else>—</span>
+            <div class="stack-cell">
+              <code v-if="data.employeePassword || data.pdfPassword" class="inline-code">{{ data.employeePassword || data.pdfPassword }}</code>
+              <span v-else>—</span>
+              <small v-if="data.preferredDelivery === 'TELEGRAM'">PDF + Telegram verification</small>
+              <small v-else>PDF password</small>
+            </div>
           </template>
         </Column>
 
@@ -119,10 +114,8 @@
             <div class="row-actions">
               <Button icon="pi pi-pencil" severity="secondary" text rounded v-tooltip.top="'Edit'"
                 @click="openEdit(data)" />
-              <Button icon="pi pi-lock" severity="secondary" text rounded
-                v-tooltip.top="'Reset PDF password'" @click="confirmResetPdfPassword(data)" />
-              <Button v-if="data.preferredDelivery === 'TELEGRAM'" icon="pi pi-key" severity="secondary" text rounded
-                v-tooltip.top="'Reset Telegram verification password'" @click="confirmResetPassword(data)" />
+              <Button icon="pi pi-key" severity="secondary" text rounded
+                v-tooltip.top="'Reset e-PaySlip password'" @click="confirmResetEmployeePassword(data)" />
               <Button icon="pi pi-trash" severity="danger" text rounded v-tooltip.top="'Delete employee'"
                 :loading="deletingId === data._id" :disabled="Boolean(deletingId)" @click="confirmDeleteEmployee(data)" />
             </div>
@@ -134,6 +127,7 @@
 
 
   <Dialog v-model:visible="importDialog" modal header="Import Employees"
+    :closable="!importing" :closeOnEscape="!importing" :dismissableMask="false"
     :style="{ width: '720px', maxWidth: 'calc(100vw - 28px)' }" :breakpoints="{ '760px': '96vw' }">
     <div class="employee-import-stack">
       <div class="import-rule-card">
@@ -150,16 +144,16 @@
           <span>Includes a blank Employees sheet, examples, and field rules.</span>
         </div>
         <Button label="Download Template" icon="pi pi-download" severity="secondary" outlined
-          :loading="downloadingTemplate" @click="downloadImportTemplate" />
+          :loading="downloadingTemplate" :disabled="importing" @click="downloadImportTemplate" />
       </div>
 
       <div class="import-template-row import-upload-row">
         <div>
           <strong>2. Upload the completed Excel file</strong>
-          <span>EMAIL accepts company or personal email. TELEGRAM automatically creates a verification password.</span>
+          <span>Every employee receives one unique 6-digit e-PaySlip password. For TELEGRAM, the same password is used for first-time verification.</span>
         </div>
         <FileUpload mode="basic" name="file" accept=".xlsx,.xls" :maxFileSize="10000000" :customUpload="true"
-          chooseLabel="Choose File" chooseIcon="pi pi-folder-open" @select="pickImportFile" />
+          :disabled="importing" chooseLabel="Choose File" chooseIcon="pi pi-folder-open" @select="pickImportFile" />
       </div>
 
       <div v-if="importFile" class="selected-import-file">
@@ -168,7 +162,33 @@
           <strong>{{ importFile.name }}</strong>
           <small>{{ formatFileSize(importFile.size) }}</small>
         </div>
-        <Button icon="pi pi-times" severity="secondary" text rounded v-tooltip.top="'Remove file'" @click="clearImportFile" />
+        <Button icon="pi pi-times" severity="secondary" text rounded v-tooltip.top="'Remove file'" :disabled="importing" @click="clearImportFile" />
+      </div>
+
+      <div v-if="importing || importProgress.status !== 'IDLE'" class="import-progress-box">
+        <div class="import-progress-head">
+          <div>
+            <strong>{{ importProgress.message || 'Preparing employee import…' }}</strong>
+            <span v-if="importProgress.currentEmployeeCode">Employee ID: {{ importProgress.currentEmployeeCode }}</span>
+            <span v-else>Import runs on the server and will continue without a browser request timeout.</span>
+          </div>
+          <Tag :value="importProgress.status === 'RECONNECTING' ? 'Reconnecting' : importProgress.status === 'CANCELLING' ? 'Cancelling' : importProgress.status === 'CANCELLED' ? 'Cancelled' : importProgress.status === 'COMPLETED' ? 'Completed' : importProgress.status === 'FAILED' ? 'Failed' : 'Processing'"
+            :severity="importProgress.status === 'COMPLETED' ? 'success' : importProgress.status === 'FAILED' ? 'danger' : importProgress.status === 'CANCELLED' ? 'secondary' : importProgress.status === 'CANCELLING' || importProgress.status === 'RECONNECTING' ? 'warn' : 'info'" />
+        </div>
+
+        <div class="import-progress-line">
+          <div class="import-progress-track" role="progressbar" aria-label="Employee import progress" aria-valuemin="0" aria-valuemax="100"
+            :aria-valuenow="importProgress.progress">
+            <div class="import-progress-fill" :style="{ width: `${importProgress.progress}%` }" />
+          </div>
+          <strong>{{ importProgress.progress }}%</strong>
+        </div>
+
+        <div v-if="importProgress.totalRows" class="import-progress-stats">
+          <div><span>Rows</span><strong>{{ importProgress.totalRows }}</strong></div>
+          <div><span>Validated</span><strong>{{ importProgress.validatedRows }}</strong></div>
+          <div><span>Created</span><strong>{{ importProgress.createdEmployees }}</strong></div>
+        </div>
       </div>
 
       <div v-if="importErrors.length" class="import-error-box">
@@ -203,14 +223,16 @@
         </div>
         <div v-if="importResult.imported" class="telegram-import-note">
           <i class="pi pi-key" />
-          <span>A unique 6-digit PDF password was generated for every imported employee. Telegram employees also received a separate verification password. Use <strong>Export</strong> to download the credentials.</span>
+          <span>One unique 6-digit e-PaySlip password was generated for every employee. The same password opens the PDF and, for Telegram employees, verifies Telegram on first link. Use <strong>Export</strong> to download the credentials.</span>
         </div>
       </div>
     </div>
 
     <template #footer>
-      <Button :label="importResult ? 'Done' : 'Cancel'" severity="secondary" text @click="closeImport" />
-      <Button v-if="!importResult" label="Import Employees" icon="pi pi-upload" :loading="importing"
+      <Button v-if="importing" label="Stop Import" icon="pi pi-stop-circle" severity="danger" outlined
+        :loading="cancellingImport" :disabled="cancellingImport || importProgress.status === 'CANCELLING'" @click="confirmCancelImport" />
+      <Button :label="importResult ? 'Done' : 'Close'" severity="secondary" text :disabled="importing" @click="closeImport" />
+      <Button v-if="!importResult && !importing" label="Import Employees" icon="pi pi-upload"
         :disabled="!importFile" @click="importEmployees" />
     </template>
   </Dialog>
@@ -266,12 +288,7 @@
         </div>
         <div v-if="form.preferredDelivery === 'EMAIL'" class="form-field">
           <label class="required">Email Address</label>
-          <InputText
-            :modelValue="form.companyEmail"
-            type="email"
-            autocomplete="email"
-            @update:modelValue="setEmailLowercase"
-          />
+          <InputText v-model.trim="form.companyEmail" type="email" />
         </div>
         <div class="form-field">
           <label>Status</label>
@@ -301,7 +318,7 @@
         <strong>{{ credentials.employeeCode }}</strong>
       </div>
       <div>
-        <span>{{ credentials.type === 'PDF_PASSWORD' ? 'PDF Password' : 'Telegram Verification Password' }}</span>
+        <span>e-PaySlip Password</span>
         <code>{{ credentials.password }}</code>
       </div>
     </div>
@@ -343,7 +360,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Avatar from 'primevue/avatar'
@@ -375,6 +392,7 @@ const loading = ref(false)
 const saving = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
+const cancellingImport = ref(false)
 const downloadingTemplate = ref(false)
 const deletingId = ref('')
 const importDialog = ref(false)
@@ -385,9 +403,22 @@ const dialog = ref(false)
 const credentialDialog = ref(false)
 const telegramDialog = ref(false)
 const telegramLoading = ref(false)
+const importProgress = reactive({
+  jobId: '',
+  status: 'IDLE',
+  phase: 'IDLE',
+  progress: 0,
+  message: '',
+  totalRows: 0,
+  validatedRows: 0,
+  createdEmployees: 0,
+  currentEmployeeCode: ''
+})
+let importPollGeneration = 0
+let importUploadController = null
 
 const summary = reactive({ totalEmployees: 0, activeEmployees: 0, telegramLinked: 0, firstLogin: 0, pdfOnly: 0 })
-const credentials = reactive({ type: 'LOGIN_PASSWORD', employeeCode: '', loginId: '', password: '' })
+const credentials = reactive({ type: 'EMPLOYEE_PASSWORD', employeeCode: '', loginId: '', password: '' })
 const telegramProfile = reactive({ employee: null, verified: false, activeChatId: '', profile: null })
 
 const categories = [
@@ -406,7 +437,7 @@ const form = reactive({
   companyEmail: '', preferredDelivery: 'EMAIL', active: true
 })
 
-const credentialDialogTitle = computed(() => credentials.type === 'PDF_PASSWORD' ? 'PDF Password' : 'Telegram Verification Password')
+const credentialDialogTitle = computed(() => 'e-PaySlip Password')
 
 function resetForm() {
   Object.assign(form, {
@@ -416,30 +447,53 @@ function resetForm() {
 }
 function openCreate() { resetForm(); dialog.value = true }
 
+function resetImportProgress() {
+  Object.assign(importProgress, {
+    jobId: '',
+    status: 'IDLE',
+    phase: 'IDLE',
+    progress: 0,
+    message: '',
+    totalRows: 0,
+    validatedRows: 0,
+    createdEmployees: 0,
+    currentEmployeeCode: ''
+  })
+}
+
 function openImport() {
+  importPollGeneration += 1
   importFile.value = null
   importErrors.value = []
   importResult.value = null
+  resetImportProgress()
   importDialog.value = true
 }
 
 function closeImport() {
+  if (importing.value) return
+  importPollGeneration += 1
   importDialog.value = false
   importFile.value = null
   importErrors.value = []
   importResult.value = null
+  resetImportProgress()
 }
 
 function pickImportFile(event) {
+  if (importing.value) return
   importFile.value = event.files?.[0] || null
   importErrors.value = []
   importResult.value = null
+  resetImportProgress()
 }
 
 function clearImportFile() {
+  if (importing.value) return
   importFile.value = null
   importErrors.value = []
   importResult.value = null
+  resetImportProgress()
 }
 
 function formatFileSize(bytes) {
@@ -467,32 +521,209 @@ async function downloadImportTemplate() {
   }
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function applyImportJob(job) {
+  if (!job) return
+  const serverProgress = Number(job.progress) || 0
+  // The first 5% is the real browser -> server file upload. The remaining
+  // 95% comes directly from the backend job's actual processing checkpoints.
+  const overallProgress = serverProgress >= 100
+    ? 100
+    : Math.min(99, Math.max(5, 5 + Math.round(serverProgress * 0.95)))
+
+  Object.assign(importProgress, {
+    jobId: job.id || importProgress.jobId,
+    status: job.status || 'RUNNING',
+    phase: job.phase || '',
+    progress: overallProgress,
+    message: job.message || 'Processing employee import…',
+    totalRows: Number(job.totalRows) || 0,
+    validatedRows: Number(job.validatedRows) || 0,
+    createdEmployees: Number(job.createdEmployees) || 0,
+    currentEmployeeCode: job.currentEmployeeCode || ''
+  })
+}
+
+async function waitForEmployeeImport(jobId, generation) {
+  while (generation === importPollGeneration) {
+    try {
+      const { data } = await api.get(`/employees/import-jobs/${jobId}`, {
+        // No Axios timeout for an import progress request. Each request is small,
+        // and a temporary network interruption must not cancel the server job.
+        timeout: 0
+      })
+      applyImportJob(data)
+
+      if (data.status === 'COMPLETED') return { completed: true, result: data.result }
+      if (data.status === 'CANCELLED') return { cancelled: true, job: data }
+      if (data.status === 'FAILED') {
+        const error = new Error(data.message || 'Employee import failed')
+        error.importErrors = Array.isArray(data.errors) ? data.errors : []
+        throw error
+      }
+    } catch (error) {
+      if (error.importErrors || error.response?.status === 404 || error.response?.status === 401) throw error
+
+      // The backend job keeps running even when the browser briefly loses its
+      // connection. Keep reconnecting instead of converting it into a timeout.
+      importProgress.status = 'RECONNECTING'
+      importProgress.message = 'Connection interrupted. Import is still running on the server; reconnecting…'
+      await wait(1500)
+      continue
+    }
+
+    await wait(600)
+  }
+
+  throw new Error('Employee import progress tracking stopped')
+}
+
+function confirmCancelImport() {
+  if (!importing.value || cancellingImport.value) return
+  const created = Number(importProgress.createdEmployees) || 0
+  confirm.require({
+    header: 'Stop Employee Import',
+    message: created > 0
+      ? `Stop this import now? ${created} employee record(s) have already been created by this import. They will be removed automatically so the import remains all-or-nothing.`
+      : 'Stop this import now? No employees from this file will be kept.',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Continue Import',
+    acceptLabel: 'Stop Import',
+    acceptClass: 'p-button-danger',
+    accept: cancelEmployeeImport
+  })
+}
+
+async function cancelEmployeeImport() {
+  if (!importing.value || cancellingImport.value) return
+  cancellingImport.value = true
+  importProgress.status = 'CANCELLING'
+  importProgress.phase = 'CANCELLING'
+  importProgress.message = importProgress.createdEmployees > 0
+    ? `Stopping import and removing ${importProgress.createdEmployees} employee record(s) created by this import…`
+    : 'Stopping employee import…'
+
+  try {
+    if (importProgress.jobId) {
+      const { data } = await api.post(`/employees/import-jobs/${importProgress.jobId}/cancel`, {}, { timeout: 0 })
+      applyImportJob(data)
+      return
+    }
+
+    // If the Excel file is still uploading and the backend job does not exist
+    // yet, abort the upload request locally. Normal imports are small, so this
+    // path is usually only visible for a very slow connection.
+    if (importUploadController) {
+      importUploadController.abort()
+      return
+    }
+
+    throw new Error('The employee import could not be cancelled because no active job was found.')
+  } catch (error) {
+    if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return
+    toast.add({
+      severity: 'error',
+      summary: 'Cannot stop import',
+      detail: error.response?.data?.message || error.message,
+      life: 5000
+    })
+  } finally {
+    cancellingImport.value = false
+  }
+}
+
 async function importEmployees() {
-  if (!importFile.value) return
+  if (!importFile.value || importing.value) return
+
+  const generation = ++importPollGeneration
   importing.value = true
   importErrors.value = []
   importResult.value = null
+  resetImportProgress()
+  Object.assign(importProgress, {
+    status: 'UPLOADING',
+    phase: 'UPLOADING',
+    progress: 0,
+    message: 'Uploading employee file…'
+  })
+
   try {
     const body = new FormData()
     body.append('file', importFile.value)
-    const { data } = await api.post('/employees/import', body)
-    importResult.value = data
+    importUploadController = new AbortController()
+
+    const { data } = await api.post('/employees/import', body, {
+      // Explicitly no timeout. More importantly, this request only starts the
+      // background job; it does not wait for 500 employee records to finish.
+      timeout: 0,
+      signal: importUploadController.signal,
+      onUploadProgress: (event) => {
+        if (!event.total) return
+        const ratio = Math.min(Math.max(event.loaded / event.total, 0), 1)
+        importProgress.progress = Math.max(importProgress.progress, Math.round(ratio * 5))
+        importProgress.message = ratio >= 1 ? 'Upload complete. Starting server processing…' : 'Uploading employee file…'
+      }
+    })
+
+    const jobId = data.jobId || data.job?.id
+    if (!jobId) throw new Error('Employee import did not return a job ID')
+
+    importProgress.jobId = jobId
+    applyImportJob(data.job)
+    const outcome = await waitForEmployeeImport(jobId, generation)
+
+    if (generation !== importPollGeneration) return
+    if (outcome?.cancelled) {
+      importProgress.status = 'CANCELLED'
+      importProgress.phase = 'CANCELLED'
+      importProgress.message = outcome.job?.message || 'Employee import cancelled. No employees from this import were kept.'
+      importProgress.createdEmployees = 0
+      toast.add({ severity: 'info', summary: 'Import cancelled', detail: importProgress.message, life: 4500 })
+      await load(1)
+      return
+    }
+
+    const result = outcome?.result
+    importResult.value = result
     importFile.value = null
-    toast.add({ severity: 'success', summary: 'Employees imported', detail: `${data.imported} employees added`, life: 3000 })
+    toast.add({
+      severity: 'success',
+      summary: 'Employees imported',
+      detail: `${result.imported} employees added`,
+      life: 3000
+    })
     await load(1)
   } catch (error) {
-    const details = error.response?.data?.details
+    if (generation !== importPollGeneration) return
+    if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+      importProgress.status = 'CANCELLED'
+      importProgress.phase = 'CANCELLED'
+      importProgress.message = 'Employee import cancelled before server processing started. No employees were created.'
+      toast.add({ severity: 'info', summary: 'Import cancelled', detail: importProgress.message, life: 4000 })
+      return
+    }
+    const details = error.importErrors || error.response?.data?.details
     if (Array.isArray(details)) importErrors.value = details
+    importProgress.status = 'FAILED'
+    importProgress.phase = 'FAILED'
+    importProgress.progress = 100
+    importProgress.message = error.response?.data?.message || error.message || 'Employee import failed'
     toast.add({
       severity: 'error',
       summary: 'Import blocked',
-      detail: error.response?.data?.message || error.message,
+      detail: importProgress.message,
       life: 6000
     })
   } finally {
-    importing.value = false
+    importUploadController = null
+    cancellingImport.value = false
+    if (generation === importPollGeneration) importing.value = false
   }
 }
+
 function dateOnlyToPicker(value) {
   if (!value) return null
   const parsed = new Date(value)
@@ -511,10 +742,6 @@ function pickerToDateOnly(value) {
   return `${year}-${month}-${day}`
 }
 
-function setEmailLowercase(value) {
-  form.companyEmail = String(value || '').toLowerCase()
-}
-
 function employeePayload() {
   return {
     employeeCode: String(form.employeeCode || '').trim(),
@@ -525,7 +752,7 @@ function employeePayload() {
     line: String(form.line || '').trim(),
     position: String(form.position || '').trim(),
     preferredDelivery: form.preferredDelivery,
-    companyEmail: form.preferredDelivery === 'EMAIL' ? String(form.companyEmail || '').trim().toLowerCase() : '',
+    companyEmail: form.preferredDelivery === 'EMAIL' ? String(form.companyEmail || '').trim() : '',
     active: form.active !== false
   }
 }
@@ -540,7 +767,7 @@ function openEdit(row) {
     department: row.department || '',
     line: row.line || '',
     position: row.position || '',
-    companyEmail: String(row.companyEmail || '').toLowerCase(),
+    companyEmail: row.companyEmail || '',
     preferredDelivery: row.preferredDelivery,
     active: row.active !== false
   })
@@ -570,11 +797,10 @@ async function load(nextPage = page.value) {
 function onPage(event) { load(event.page + 1) }
 function showCredentials(value) {
   if (!value) return
-  const type = value.type || value.credentialType || (value.pdfPassword ? 'PDF_PASSWORD' : 'LOGIN_PASSWORD')
-  credentials.type = type
+  credentials.type = 'EMPLOYEE_PASSWORD'
   credentials.employeeCode = value.employeeCode || value.loginId || ''
   credentials.loginId = value.loginId || value.employeeCode || ''
-  credentials.password = value.password || value.pdfPassword || value.temporaryPassword || ''
+  credentials.password = value.password || value.employeePassword || value.pdfPassword || value.temporaryPassword || ''
   if (credentials.password) credentialDialog.value = true
 }
 
@@ -643,53 +869,31 @@ async function deleteEmployee(employee) {
   }
 }
 
-function confirmResetPdfPassword(employee) {
+function confirmResetEmployeePassword(employee) {
+  const telegramNote = employee.preferredDelivery === 'TELEGRAM'
+    ? ' Telegram will be unlinked and must be verified again using the new password.'
+    : ''
   confirm.require({
-    header: 'Reset PDF Password',
-    message: `Generate a new 6-digit PDF password for ${employee.fullName}? Future payslips will use the new password. Previously released PDFs keep their old password.`,
-    icon: 'pi pi-lock',
-    rejectLabel: 'Cancel',
-    acceptLabel: 'Reset',
-    accept: () => resetPdfPassword(employee)
-  })
-}
-
-async function resetPdfPassword(employee) {
-  try {
-    const { data } = await api.post(`/employees/${employee._id}/reset-pdf-password`)
-    showCredentials({
-      type: 'PDF_PASSWORD',
-      employeeCode: data.employeeCode || employee.employeeCode,
-      password: data.password || data.pdfPassword
-    })
-    await load(page.value)
-  } catch (error) {
-    toast.add({ severity: 'error', summary: 'Cannot reset PDF password', detail: error.response?.data?.message || error.message, life: 5000 })
-  }
-}
-
-function confirmResetPassword(employee) {
-  confirm.require({
-    header: 'Reset Telegram Verification Password',
-    message: `Unlink Telegram and generate a new verification password for ${employee.fullName}?`,
+    header: 'Reset e-PaySlip Password',
+    message: `Generate a new 6-digit e-PaySlip password for ${employee.fullName}? Future PDFs will use the new password.${telegramNote} Previously released PDFs keep their old password.`,
     icon: 'pi pi-key',
     rejectLabel: 'Cancel',
     acceptLabel: 'Reset',
-    accept: () => resetPassword(employee)
+    accept: () => resetEmployeePassword(employee)
   })
 }
-async function resetPassword(employee) {
+
+async function resetEmployeePassword(employee) {
   try {
-    const { data } = await api.post(`/employees/${employee._id}/reset-temporary-password`)
+    const { data } = await api.post(`/employees/${employee._id}/reset-password`)
     showCredentials({
-      type: data.credentialType,
-      employeeCode: data.employeeCode || data.loginId || employee.employeeCode,
-      loginId: data.loginId,
-      password: data.password || data.pdfPassword || data.temporaryPassword
+      type: 'EMPLOYEE_PASSWORD',
+      employeeCode: data.employeeCode || employee.employeeCode,
+      password: data.password || data.employeePassword || data.pdfPassword
     })
     await load(page.value)
   } catch (error) {
-    toast.add({ severity: 'error', summary: 'Cannot reset', detail: error.response?.data?.message || error.message, life: 5000 })
+    toast.add({ severity: 'error', summary: 'Cannot reset password', detail: error.response?.data?.message || error.message, life: 5000 })
   }
 }
 
@@ -735,8 +939,7 @@ async function exportCredentials() {
 }
 
 async function copyCredentials() {
-  const label = credentials.type === 'PDF_PASSWORD' ? 'PDF Password' : 'Telegram Verification Password'
-  const text = `Employee ID: ${credentials.employeeCode}\n${label}: ${credentials.password}`
+  const text = `Employee ID: ${credentials.employeeCode}\ne-PaySlip Password: ${credentials.password}`
   try {
     await navigator.clipboard.writeText(text)
     toast.add({ severity: 'success', summary: 'Copied', life: 1800 })
@@ -770,6 +973,10 @@ function formatDateTime(value) {
 }
 
 onMounted(() => load())
+onBeforeUnmount(() => {
+  // Stop browser polling only. Any already-started import continues on the backend.
+  importPollGeneration += 1
+})
 </script>
 
 <style scoped>
@@ -1008,6 +1215,94 @@ onMounted(() => load())
   font-size: 10.5px;
 }
 
+.import-progress-box {
+  padding: 13px;
+  border: 1px solid #dbe5ee;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: grid;
+  gap: 12px;
+}
+
+.import-progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.import-progress-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.import-progress-head strong {
+  color: #263449;
+  font-size: 12px;
+}
+
+.import-progress-head span {
+  color: #748196;
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.import-progress-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 10px;
+  align-items: center;
+}
+
+.import-progress-line > strong {
+  color: #334155;
+  font-size: 12px;
+  text-align: right;
+}
+
+.import-progress-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7edf3;
+}
+
+.import-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #0aa77a;
+  transition: width .28s ease;
+}
+
+.import-progress-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.import-progress-stats > div {
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8ef;
+  border-radius: 9px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.import-progress-stats span {
+  color: #7a8798;
+  font-size: 10.5px;
+}
+
+.import-progress-stats strong {
+  color: #263449;
+  font-size: 14px;
+}
+
 .import-error-box {
   overflow: hidden;
   border-color: #f1c7c7;
@@ -1108,7 +1403,8 @@ onMounted(() => load())
 
   .credential-grid,
   .employee-metrics,
-  .import-result-grid {
+  .import-result-grid,
+  .import-progress-stats {
     grid-template-columns: 1fr;
   }
 

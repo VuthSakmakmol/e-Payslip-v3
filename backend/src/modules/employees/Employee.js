@@ -21,7 +21,7 @@ const telegramProfileSchema = new mongoose.Schema(
 
     // Preserve the complete Telegram identity/chat objects returned by polling.
     // We intentionally do NOT store the /start message text because it contains
-    // the one-time e-PaySlip verification token.
+    // the employee e-PaySlip password used during Telegram verification.
     fromSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     chatSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   },

@@ -33,7 +33,7 @@ export function createTransientPayroll(payload) {
 export function getTransientPayroll(id) {
   cleanupExpired()
   const session = sessions.get(id)
-  if (!session) throw new AppError('Temporary foreigner payroll session expired or not found', 404)
+  if (!session) throw new AppError('Temporary payroll session expired or not found. Import the payroll file again.', 404)
   return session
 }
 

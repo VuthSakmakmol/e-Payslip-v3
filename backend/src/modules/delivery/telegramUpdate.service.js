@@ -1,9 +1,8 @@
 import { Employee } from "../employees/Employee.js";
-import { TelegramCredential } from "../auth/TelegramCredential.js";
 import {
-  consumeTelegramCredential,
-  verifyTelegramPassword,
-} from "../auth/telegramCredential.service.js";
+  ensurePayslipCredential,
+  verifyPayslipPasswordForTelegram,
+} from "../auth/payslipCredential.service.js";
 import {
   sendTelegramMessage,
   answerTelegramCallback,
@@ -95,7 +94,7 @@ export async function processTelegramUpdate(update) {
       setSession(chatId, { step: "PASSWORD", employeeId: current.employeeId });
       await sendTelegramMessage(
         chatId,
-        "Please enter your first-time verification password.",
+        "Please enter your 6-digit e-PaySlip password. This is the same password used to open your payslip PDF.",
       );
     }
     return;
@@ -116,16 +115,7 @@ export async function processTelegramUpdate(update) {
       );
       return;
     }
-    const credential = await TelegramCredential.findOne({
-      employeeId: employee._id,
-    });
-    if (!credential || credential.status !== "PENDING") {
-      await sendTelegramMessage(
-        chatId,
-        "This Employee ID cannot be linked. Please contact Root Admin.",
-      );
-      return;
-    }
+    await ensurePayslipCredential(employee);
     setSession(chatId, { step: "CONFIRM", employeeId: String(employee._id) });
     await sendTelegramMessage(
       chatId,
@@ -145,10 +135,7 @@ export async function processTelegramUpdate(update) {
   }
   if (current.step === "PASSWORD") {
     const employee = await Employee.findById(current.employeeId);
-    const credential = await TelegramCredential.findOne({
-      employeeId: current.employeeId,
-    }).select("+passwordHash +passwordEncrypted");
-    if (!employee || !credential) {
+    if (!employee) {
       clearSession(chatId);
       await sendTelegramMessage(
         chatId,
@@ -156,10 +143,10 @@ export async function processTelegramUpdate(update) {
       );
       return;
     }
-    if (!(await verifyTelegramPassword(credential, text))) {
+    if (!(await verifyPayslipPasswordForTelegram(employee, text))) {
       await sendTelegramMessage(
         chatId,
-        "Incorrect verification password. Please try again.",
+        "Incorrect 6-digit e-PaySlip password. Please try again.",
       );
       return;
     }
@@ -179,7 +166,6 @@ export async function processTelegramUpdate(update) {
     employee.telegramChatId = chatId;
     updateProfile(employee, update);
     await employee.save();
-    await consumeTelegramCredential(credential);
     clearSession(chatId);
     await sendTelegramMessage(
       chatId,

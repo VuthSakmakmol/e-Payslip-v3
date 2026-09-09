@@ -8,7 +8,6 @@ const payrollReleaseSchema = new mongoose.Schema({
   periodKey: { type: String, required: true, index: true },
   releaseMode: { type: String, enum: ['FULL', 'UPDATE'], required: true, default: 'FULL', index: true },
   correctionNumber: { type: Number, min: 0, default: 0 },
-  sourceBatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'PayrollBatch', default: null },
   sourceFileName: { type: String, default: '' },
   employeeCount: { type: Number, min: 0, default: 0 },
   sentCount: { type: Number, min: 0, default: 0 },
